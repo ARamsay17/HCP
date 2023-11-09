@@ -1674,8 +1674,9 @@ class Trios(Instrument):
             mZ_unc = mZ_unc[1:, 1:]  # remove 1st line and column, we work on 255 pixel not 256.
             Ct = np.asarray(pd.DataFrame(uncGrp.getDataset(sensortype + "_TEMPDATA_CAL").data[1:].transpose().tolist())[4])
             Ct_unc = np.asarray(pd.DataFrame(uncGrp.getDataset(sensortype + "_TEMPDATA_CAL").data[1:].transpose().tolist())[5])
-            LAMP = np.asarray(pd.DataFrame(uncGrp.getDataset(sensortype + "_RADCAL_LAMP").data)['2'])
-            LAMP_unc = (np.asarray(pd.DataFrame(uncGrp.getDataset(sensortype + "_RADCAL_LAMP").data)['3'])/100)*LAMP
+            # divide LAMP by 10 to account for TriOS unit conversion
+            LAMP = np.asarray(pd.DataFrame(uncGrp.getDataset(sensortype + "_RADCAL_LAMP").data)['2'])/10
+            LAMP_unc = ((np.asarray(pd.DataFrame(uncGrp.getDataset(sensortype + "_RADCAL_LAMP").data)['3'])/100)*LAMP)
 
             # Defined constants
             nband = len(B0)
@@ -1736,6 +1737,13 @@ class Trios(Instrument):
 
             # Updated calibration gain
             if sensortype == "ES":
+                # for plotting and testing
+                updated_radcal_gain = (S12_sl_corr / LAMP) * (int_time_t0 / t1)
+                updated_radcal_gain_mf = self.update_cal_ES(S12_sl_corr, LAMP, int_time_t0, t1)
+
+                # avg_coserror, full_hemi_coserror, zenith_ang = ProcessL1b_FRMCal.cosine_error_correction(node,
+                #                                                                                          sensortype)
+
                 # Compute avg cosine error (not done for the moment)
                 cos_mean_vals, cos_uncertainties = self.prepare_cos(uncGrp, sensortype, 'L2')
                 corr = [None, "syst", "syst", "rand"]
@@ -1765,9 +1773,6 @@ class Trios(Instrument):
 
                 # Irradiance direct and diffuse ratio
                 res_py6s = ProcessL1b_FRMCal.get_direct_irradiance_ratio(node, sensortype, called_L2=True)
-                # res_py6s = ProcessL1b.get_direct_irradiance_ratio(node, sensortype, trios=0,
-                #                                                   L2_irr_grp=grp)  # , trios=instrument_number)
-                # updated_radcal_gain = self.update_cal_ES(S12_sl_corr, LAMP, int_time_t0, t1)
                 # Convert TriOS mW/m2/nm to uW/cm^2/nm
                 sample_updated_radcal_gain = prop.run_samples(self.update_cal_ES,
                                                               [sample_S12_sl_corr, sample_LAMP, sample_int_time_t0,
@@ -1777,7 +1782,11 @@ class Trios(Instrument):
                 unc_PANEL = (np.asarray(
                     pd.DataFrame(uncGrp.getDataset(sensortype + "_RADCAL_PANEL").data)['3'])/100)*PANEL
                 sample_PANEL = cm.generate_sample(mDraws, PANEL, unc_PANEL, "syst")
-                # updated_radcal_gain = self.update_cal_rad(PANEL, S12_sl_corr, LAMP, int_time_t0, t1)
+
+                # plotting and testing
+                updated_radcal_gain = (np.pi * S12_sl_corr) / (LAMP * PANEL) * (int_time_t0 / t1)
+                updated_radcal_gain_mf = self.update_cal_rad(PANEL, S12_sl_corr, LAMP, int_time_t0, t1)
+
                 # Convert TriOS mW/m2/nm to uW/cm^2/nm
                 sample_updated_radcal_gain = prop.run_samples(self.update_cal_rad,
                                                               [sample_PANEL, sample_S12_sl_corr, sample_LAMP,
@@ -1815,11 +1824,13 @@ class Trios(Instrument):
             sample_n_iter = cm.generate_sample(mDraws, n_iter, None, None, dtype=int)
 
             # Non-Linearity Correction
+            linear_corr_mesure_test = offset_corrected_mesure * (1 - alpha * offset_corrected_mesure)
             linear_corr_mesure = self.non_linearity_corr(offset_corr_mesure, alpha)
             sample_linear_corr_mesure = prop.run_samples(self.non_linearity_corr,
                                                          [sample_offset_corrected_mesure, sample_alpha])
 
             # Straylight Correction
+            straylight_corr_mesure_test = ProcessL1b_FRMCal.Slaper_SL_correction(linear_corr_mesure, mZ, n_iter)
             straylight_corr_mesure = self.Slaper_SL_correction(linear_corr_mesure, mZ, n_iter)
 
             S12_sl_corr_unc = []
@@ -1836,13 +1847,24 @@ class Trios(Instrument):
             sample_straylight_corr_mesure = prop.combine_samples([sample_straylight_1, sample_straylight_2])
 
             # Normalization Correction, based on integration time
+            normalized_mesure = straylight_corr_mesure * int_time_t0 / int_time
             sample_normalized_mesure = sample_straylight_corr_mesure*int_time_t0/int_time
+            norm_unc = prop.process_samples(None, sample_normalized_mesure)
+            rel_norm_unc = (norm_unc / normalized_mesure) * 100
+            import matplotlib.pyplot as plt
+            fig = plt.figure()
+            plt.plot(radcal_wvl, rel_norm_unc)
+            plt.xlim((400, 700))
+            plt.ylim((0, 5))
+            plt.savefig("test_norm_rel.jpg")
 
             # Calculate New Calibration Coeffs
+            calibrated_mesure = normalized_mesure / updated_radcal_gain
             sample_calibrated_mesure = prop.run_samples(self.absolute_calibration,
                                                         [sample_normalized_mesure, sample_updated_radcal_gain])
 
             # Thermal correction
+            thermal_corr_mesure = Ct * calibrated_mesure
             sample_thermal_corr_mesure = prop.run_samples(self.thermal_corr, [sample_Ct, sample_calibrated_mesure])
 
             if sensortype.lower() == "es":
@@ -1856,7 +1878,14 @@ class Trios(Instrument):
                 sample_cos_corr_mesure = prop.run_samples(self.cosine_corr,
                                                           [sample_zen_avg_coserror, sample_fhemi_coserr, sample_zen_ang,
                                                            sample_thermal_corr_mesure, sample_sol_zen, sample_dir_rat])
+                # sample_cos_corr_mesure = sample_cos_corr_mesure / 10
                 cos_unc = prop.process_samples(None, sample_cos_corr_mesure)
+
+                ind_closest_zen = np.argmin(np.abs(zenith_ang-solar_zenith))
+                cos_corr = 1-avg_coserror[:,ind_closest_zen]/100
+                Fhcorr = 1-full_hemi_coserr/100
+                cos_corr_mesure = (direct_ratio * thermal_corr_mesure * cos_corr) + (
+                            (1 - direct_ratio) * thermal_corr_mesure * Fhcorr)
 
                 unc = cos_unc
                 sample = sample_cos_corr_mesure
