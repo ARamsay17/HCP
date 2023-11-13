@@ -8,6 +8,7 @@ import calendar
 import collections
 from decimal import Decimal
 from inspect import currentframe, getframeinfo
+import matplotlib.pyplot as plt
 
 # NPL packages
 import punpy
@@ -286,24 +287,6 @@ class Instrument(ABC):
         # zeros = np.zeros(len(Cal['ES']))  # for testing
 
         # create lists containing mean values and their associated uncertainties (list order matters)
-        # if ConfigFile.settings['SensorType'].lower() == "trios":
-        #     # for trios the dark average and std is one value
-        #     esaveDark = stats['ES']['ave_Dark']
-        #     liaveDark = stats['LI']['ave_Dark']
-        #     ltaveDark = stats['LT']['ave_Dark']
-        #     esstdDark = stats['ES']['std_Dark']
-        #     listdDark = stats['LI']['std_Dark']
-        #     ltstdDark = stats['LT']['std_Dark']
-        #
-        # elif ConfigFile.settings['SensorType'].lower() == "seabird":
-        #     # for seabird it is an array of length 255
-        #     esaveDark = stats['ES']['ave_Dark']
-        #     liaveDark = stats['LI']['ave_Dark']
-        #     ltaveDark = stats['LT']['ave_Dark']
-        #     esstdDark = stats['ES']['std_Dark']
-        #     listdDark = stats['LI']['std_Dark']
-        #     ltstdDark = stats['LT']['std_Dark']
-
         mean_values = [stats['ES']['ave_Light'], stats['ES']['ave_Dark'],
                        stats['LI']['ave_Light'], stats['LI']['ave_Dark'],
                        stats['LT']['ave_Light'], stats['LT']['ave_Dark'],
@@ -365,7 +348,7 @@ class Instrument(ABC):
 
     @abstractmethod
     def FRM(self, node: HDFRoot, uncGrp: HDFGroup, raw_grps: dict[str, HDFGroup], raw_slices: dict[str, np.array],
-            stats: dict, newWaveBands: np.array) -> dict[str, np.array]:
+            stats: dict, newWaveBands: np.array, refData: dict) -> dict[str, np.array]:
         """
         :param node: HDFRoot of L1BQC data for procressing
         :param uncGrp: HDFGroup of uncertainty budget
@@ -1294,11 +1277,17 @@ class HyperOCR(Instrument):
             std_Signal=stdevSignal,
             )
 
-    def FRM(self, node, uncGrp, raw_grps, raw_slices, stats, newWaveBands):
+    def FRM(self, node, uncGrp, raw_grps, raw_slices, stats, newWaveBands, refData: dict):
         # calibration of HyperOCR following the FRM processing of FRM4SOC2
         output = {}
         for sensortype in ['ES', 'LI', 'LT']:
             print('FRM Processing:', sensortype)
+
+            raw_name = node.attributes['RAW_FILE_NAME']
+            cast = raw_name[raw_name.find('FICE22'):raw_name.find('.mlb')]
+            refGrp = np.asarray(list(refData[sensortype].values()), dtype=float).flatten()
+            fig = plt.figure(f"{sensortype}_{os.path.basename(cast)}")
+
             # Read data
             grp = raw_grps[sensortype]
             raw_data = np.asarray(list(raw_slices[sensortype]["LIGHT"]['data'].values())).transpose()
@@ -1314,6 +1303,11 @@ class HyperOCR(Instrument):
             # Read FRM characterisation
             radcal_wvl = np.asarray(
                 pd.DataFrame(uncGrp.getDataset(sensortype + "_RADCAL_CAL").data)['1'][1:].tolist())
+
+            refGrp, _ = self.interp_common_wvls(refGrp,
+                                                np.asarray(list(refData[sensortype].keys()), dtype=float),
+                                                radcal_wvl)
+
             radcal_cal = pd.DataFrame(uncGrp.getDataset(sensortype + "_RADCAL_CAL").data)['2']
             S1 = pd.DataFrame(uncGrp.getDataset(sensortype + "_RADCAL_CAL").data)['6']
             S2 = pd.DataFrame(uncGrp.getDataset(sensortype + "_RADCAL_CAL").data)['8']
@@ -1466,9 +1460,19 @@ class HyperOCR(Instrument):
             sample_dark = cm.generate_sample(100, np.mean(raw_dark, axis=0), std_dark, "rand")
             sample_dark_corr_data = prop.run_samples(self.dark_Substitution, [sample_light, sample_dark])
 
+            dark_unc = prop.process_samples(None, sample_dark_corr_data)
+            dark_unc_rel = np.abs((dark_unc * 1e10) / (refGrp * 1e10)) * 100
+            plt.plot(radcal_wvl, dark_unc_rel, label="+Noise")
+            light_unc = prop.process_samples(None, sample_light)
+            std_rel = np.abs((light_unc * 1e10) / (refGrp * 1e10)) * 100
+            plt.plot(radcal_wvl, std_rel, label="Environmental Instability")
+
             # Non-linearity
             data1 = self.DATA1(data, alpha)  # data*(1 - alpha*data)
             sample_data1 = prop.run_samples(self.DATA1, [sample_dark_corr_data, sample_alpha])
+
+            nlin_unc = prop.process_samples(None, sample_data1)
+            nlin_unc_rel = np.abs((nlin_unc*1e10)/(refGrp * 1e10)) * 100
 
             # Straylight
             data2 = self.Slaper_SL_correction(data1, mZ, n_iter)
@@ -1638,11 +1642,16 @@ class Trios(Instrument):
             std_Signal=stdevSignal,
         )
 
-    def FRM(self, node, uncGrp, raw_grps, raw_slices, stats, newWaveBands):
+    def FRM(self, node, uncGrp, raw_grps, raw_slices, stats, newWaveBands, refData: dict):
         # TriOS specific
         output = {}
+        raw_name = node.attributes['RAW_FILE_NAME']
+        cast = raw_name[raw_name.find('FICE22'):raw_name.find('.mlb')]
         stats = None  # stats is unused in this method, but required as an input because of Seabird
         for sensortype in ['ES', 'LI', 'LT']:
+
+            refGrp = np.asarray(list(refData[sensortype].values()), dtype=float).flatten()
+            fig = plt.figure(f"{sensortype}_{os.path.basename(cast)}")
 
             ### Read HDF file inputs
             grp = raw_grps[sensortype]
@@ -1659,6 +1668,9 @@ class Trios(Instrument):
             ### Read full characterisation files
             radcal_wvl = np.asarray(pd.DataFrame(uncGrp.getDataset(sensortype + "_RADCAL_CAL").data)['1'][1:].tolist())
 
+            refGrp, _ = self.interp_common_wvls(refGrp,
+                                                np.asarray(list(refData[sensortype].keys()), dtype=float),
+                                                radcal_wvl)
             ### for masking arrays only
             raw_cal = grp.getDataset(f"CAL_{sensortype}").data
 
@@ -1773,7 +1785,6 @@ class Trios(Instrument):
 
                 # Irradiance direct and diffuse ratio
                 res_py6s = ProcessL1b_FRMCal.get_direct_irradiance_ratio(node, sensortype, called_L2=True)
-                # Convert TriOS mW/m2/nm to uW/cm^2/nm
                 sample_updated_radcal_gain = prop.run_samples(self.update_cal_ES,
                                                               [sample_S12_sl_corr, sample_LAMP, sample_int_time_t0,
                                                                sample_t1])
@@ -1785,9 +1796,7 @@ class Trios(Instrument):
 
                 # plotting and testing
                 updated_radcal_gain = (np.pi * S12_sl_corr) / (LAMP * PANEL) * (int_time_t0 / t1)
-                updated_radcal_gain_mf = self.update_cal_rad(PANEL, S12_sl_corr, LAMP, int_time_t0, t1)
 
-                # Convert TriOS mW/m2/nm to uW/cm^2/nm
                 sample_updated_radcal_gain = prop.run_samples(self.update_cal_rad,
                                                               [sample_PANEL, sample_S12_sl_corr, sample_LAMP,
                                                                sample_int_time_t0, sample_t1])
@@ -1797,16 +1806,19 @@ class Trios(Instrument):
 
             back_mesure = np.array([B0 + B1*(int_time[n]/int_time_t0) for n in range(nmes)])
             back_corrected_mesure = mesure - back_mesure
-            std_light = np.std(back_corrected_mesure, axis=0)/nmes
+            std_light = np.std(back_corrected_mesure, axis=0)/np.power(nmes, 0.5)
             sample_back_corrected_mesure = cm.generate_sample(mDraws, np.mean(back_corrected_mesure, axis=0), std_light,
                                                               "rand")
-
+            back_unc = prop.process_samples(None, sample_back_corrected_mesure)
             # Offset substraction : dark index read from attribute
             offset = np.mean(back_corrected_mesure[:, DarkPixelStart:DarkPixelStop], axis=1)
             offset_corrected_mesure = np.asarray(
                 [back_corrected_mesure[:, i] - offset for i in range(nband)]).transpose()
-            offset_std = np.std(back_corrected_mesure[:, DarkPixelStart:DarkPixelStop], axis=1)  # std in dark pixels
-            std_dark = np.power((np.power(np.std(offset), 2) + np.power(offset_std, 2))/np.power(nmes, 2), 0.5)
+            # get standard deviation across scans
+            offset_std = np.mean(np.std(back_corrected_mesure[:, DarkPixelStart:DarkPixelStop], axis=0))
+            # get standard deviation across dark pixels
+            offset_std_scans = np.mean(np.std(back_corrected_mesure[:, DarkPixelStart:DarkPixelStop], axis=1))
+            std_dark = np.power((np.power(offset_std_scans, 2) + np.power(offset_std, 2)), 0.5)/np.power(nmes, 0.5)
 
             # add in quadrature with std in offset across scans
             sample_offset = cm.generate_sample(mDraws, np.mean(offset), np.mean(std_dark), "rand")
@@ -1819,18 +1831,25 @@ class Trios(Instrument):
 
             prop = punpy.MCPropagation(mDraws, parallel_cores=1)
 
+            back_unc_rel = np.abs((back_unc * 1e10)/(refGrp * 1e10))*100
+            plt.plot(radcal_wvl, back_unc_rel, label="Environmental Instability")
+            offset_unc = prop.process_samples(None, sample_offset_corrected_mesure)
+            std_rel = np.abs((offset_unc * 1e10)/(refGrp * 1e10))*100
+            plt.plot(radcal_wvl, std_rel, label="+Noise")
             # set standard variables
             n_iter = 5
             sample_n_iter = cm.generate_sample(mDraws, n_iter, None, None, dtype=int)
 
             # Non-Linearity Correction
-            linear_corr_mesure_test = offset_corrected_mesure * (1 - alpha * offset_corrected_mesure)
             linear_corr_mesure = self.non_linearity_corr(offset_corr_mesure, alpha)
             sample_linear_corr_mesure = prop.run_samples(self.non_linearity_corr,
                                                          [sample_offset_corrected_mesure, sample_alpha])
 
+            nlin_unc = prop.process_samples(None, sample_linear_corr_mesure)
+            nlin_unc_rel = np.abs((nlin_unc * 1e10) / (refGrp * 1e10))*100  # linear_corr_mesure
+            plt.plot(radcal_wvl, nlin_unc_rel, label="+nLin")
+
             # Straylight Correction
-            straylight_corr_mesure_test = ProcessL1b_FRMCal.Slaper_SL_correction(linear_corr_mesure, mZ, n_iter)
             straylight_corr_mesure = self.Slaper_SL_correction(linear_corr_mesure, mZ, n_iter)
 
             S12_sl_corr_unc = []
@@ -1850,13 +1869,10 @@ class Trios(Instrument):
             normalized_mesure = straylight_corr_mesure * int_time_t0 / int_time
             sample_normalized_mesure = sample_straylight_corr_mesure*int_time_t0/int_time
             norm_unc = prop.process_samples(None, sample_normalized_mesure)
-            rel_norm_unc = (norm_unc / normalized_mesure) * 100
-            import matplotlib.pyplot as plt
-            fig = plt.figure()
-            plt.plot(radcal_wvl, rel_norm_unc)
-            plt.xlim((400, 700))
-            plt.ylim((0, 5))
-            plt.savefig("test_norm_rel.jpg")
+
+            ## PLOT NORMALISATION UNCERTAINTY - COMBINES STRAYLIGHT
+            rel_norm_unc = (norm_unc * 1e10 / refGrp * 1e10) * 100  # normalized_mesure
+            plt.plot(radcal_wvl, rel_norm_unc, label="+Straylight")
 
             # Calculate New Calibration Coeffs
             calibrated_mesure = normalized_mesure / updated_radcal_gain
@@ -1866,6 +1882,9 @@ class Trios(Instrument):
             # Thermal correction
             thermal_corr_mesure = Ct * calibrated_mesure
             sample_thermal_corr_mesure = prop.run_samples(self.thermal_corr, [sample_Ct, sample_calibrated_mesure])
+            therm_unc = prop.process_samples(None, sample_thermal_corr_mesure)
+            therm_unc_rel = np.abs((therm_unc * 1e10) / (refGrp * 1e10)) * 100
+            plt.plot(radcal_wvl, therm_unc_rel, label="+Thermal")
 
             if sensortype.lower() == "es":
                 # get cosine correction attributes and samples from dictionary
@@ -1878,8 +1897,9 @@ class Trios(Instrument):
                 sample_cos_corr_mesure = prop.run_samples(self.cosine_corr,
                                                           [sample_zen_avg_coserror, sample_fhemi_coserr, sample_zen_ang,
                                                            sample_thermal_corr_mesure, sample_sol_zen, sample_dir_rat])
-                # sample_cos_corr_mesure = sample_cos_corr_mesure / 10
-                cos_unc = prop.process_samples(None, sample_cos_corr_mesure)
+
+                unc = prop.process_samples(None, sample_cos_corr_mesure)
+                sample = sample_cos_corr_mesure
 
                 ind_closest_zen = np.argmin(np.abs(zenith_ang-solar_zenith))
                 cos_corr = 1-avg_coserror[:,ind_closest_zen]/100
@@ -1887,11 +1907,12 @@ class Trios(Instrument):
                 cos_corr_mesure = (direct_ratio * thermal_corr_mesure * cos_corr) + (
                             (1 - direct_ratio) * thermal_corr_mesure * Fhcorr)
 
-                unc = cos_unc
-                sample = sample_cos_corr_mesure
+                cos_unc_rel = np.abs((unc * 1e10)/(refGrp * 1e10))*100  # unc in %
+                plt.plot(radcal_wvl, cos_unc_rel, label="+Cosine")
+                # unc = cos_unc
             else:
                 sample = sample_thermal_corr_mesure
-                unc = prop.process_samples(None, sample_thermal_corr_mesure)
+                unc = therm_unc
 
             # mask for arrays
             ind_zero = np.array([rc[0] == 0 for rc in raw_cal])  # changed due to raw_cal now being a np array
@@ -1903,6 +1924,13 @@ class Trios(Instrument):
             output[
                 f"{sensortype.lower()}Unc"] = unc[ind_nocal == False]  # dict(zip(str_wvl[self.ind_nocal==False], filtered_unc))  # unc in dict with wavelengths
             output[f"{sensortype.lower()}Sample"] = sample[:, ind_nocal == False]  # samples keep raw
+
+            # setup plot settings and save
+            plt.xlim((350, 900))
+            plt.ylim((0, 5))
+            plt.title(f"{os.path.basename(cast)}: {sensortype} - Breakdown FRM")
+            plt.legend()
+            plt.savefig(f"{sensortype}_{os.path.basename(cast)}_breakdown.jpg")
 
         for sensortype in ['ES', 'LI', 'LT']:
             # get sensor specific wavebands - output[f"{sensortype.lower()}Wvls"].pop

@@ -1719,7 +1719,10 @@ class ProcessL2:
                 instrument.FRM(node, uncGroup,
                                dict(ES=esRawGroup, LI=liRawGroup, LT=ltRawGroup),
                                dict(ES=esRawSlice, LI=liRawSlice, LT=ltRawSlice),
-                               stats, np.array(waveSubset, float)))  # instrument_WB
+                               stats,
+                               np.array(waveSubset, float),
+                               dict(ES=esXSlice, LI=liXSlice, LT=ltXSlice))
+                         )  # instrument_WB
             xUNC.update(instrument.rrsHyperUNCFRM(rhoScalar, rhoVec, rhoUNC, waveSubset, xSlice))
 
         else:
