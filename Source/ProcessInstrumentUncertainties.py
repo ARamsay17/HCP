@@ -1471,8 +1471,13 @@ class HyperOCR(Instrument):
             data1 = self.DATA1(data, alpha)  # data*(1 - alpha*data)
             sample_data1 = prop.run_samples(self.DATA1, [sample_dark_corr_data, sample_alpha])
 
+            calFolder = os.path.splitext(ConfigFile.filename)[0] + "_Calibration"
+            calPath = os.path.join(PATH_TO_CONFIG, calFolder)
+            calibrationMap = CalibrationFileReader.read(calPath)
+            waves, Coef = ProcessL1b_FactoryCal.extract_calibration_coeff(node, calibrationMap, sensortype)
             nlin_unc = prop.process_samples(None, sample_data1)
-            nlin_unc_rel = np.abs((nlin_unc*1e10)/(refGrp * 1e10)) * 100
+            nlin_unc_rel = np.abs((nlin_unc * Coef * 1e10)/(refGrp * 1e10)) * 100
+            plt.plot(radcal_wvl, nlin_unc_rel, label="+nLin")
 
             # Straylight
             data2 = self.Slaper_SL_correction(data1, mZ, n_iter)
@@ -1490,13 +1495,22 @@ class HyperOCR(Instrument):
                                                    [sample_data1, sample_mZ, sample_n_iter])  # error from method
             sample_data2 = prop.combine_samples([sample_straylight_1, sample_straylight_2])  # total straylight uncertainty
 
+
+
+            norm_unc = prop.process_samples(None, sample_data2)
+            rel_norm_unc = (norm_unc * 1e10 / refGrp * 1e10) * 100  # normalized_mesure
+            plt.plot(radcal_wvl, rel_norm_unc, label="+Straylight")
+
             # Calibration
-            # data3 = self.DATA3(data2, cal_int, int_time, updated_radcal_gain)  # data2*(cal_int/int_time)/updated_radcal_gain
+            data3 = self.DATA3(data2, cal_int, int_time, updated_radcal_gain)  # data2*(cal_int/int_time)/updated_radcal_gain
             sample_data3 = prop.run_samples(self.DATA3, [sample_data2, sample_cal_int, sample_int_time, sample_updated_radcal_gain])
 
             # thermal
-            # data4 = self.DATA4(data3, Ct)
+            data4 = self.DATA4(data3, Ct)
             sample_data4 = prop.run_samples(self.DATA4, [sample_data3, sample_Ct])
+            therm_unc = prop.process_samples(None, sample_data4)
+            therm_unc_rel = np.abs((therm_unc * 1e10) / (data4 * 1e10)) * 100  # refGrp
+            plt.plot(radcal_wvl, therm_unc_rel, label="+Thermal")
 
             # Cosine correction
             if sensortype == "ES":
@@ -1509,7 +1523,7 @@ class HyperOCR(Instrument):
 
                 sample_dir_rat = cm.generate_sample(mDraws, direct_ratio, 0.08*direct_ratio, "syst")
 
-                # data5 = self.DATA5(data4, solar_zenith, direct_ratio, zenith_ang, avg_coserror, full_hemi_coserr)
+                data5 = self.DATA5(data4, solar_zenith, direct_ratio, zenith_ang, avg_coserror, full_hemi_coserr)
                 sample_data5 = prop.run_samples(self.DATA5, [sample_data4,
                                                              sample_sol_zen,
                                                              sample_dir_rat,
@@ -1518,9 +1532,18 @@ class HyperOCR(Instrument):
                                                              sample_fhemi_coserr])
                 unc = prop.process_samples(None, sample_data5)
                 sample = sample_data5
+                cos_unc_rel = np.abs((unc * 1e10)/(data5 * 1e10))*100  # unc in % - refGrp
+                plt.plot(radcal_wvl, cos_unc_rel, label="+Cosine")
             else:
                 unc = prop.process_samples(None, sample_data4)
                 sample = sample_data4
+
+            # setup plot settings and save
+            plt.xlim((350, 900))
+            plt.ylim((0, 5))
+            plt.title(f"{os.path.basename(cast)}: {sensortype} - Breakdown FRM")
+            plt.legend()
+            plt.savefig(f"{sensortype}_{os.path.basename(cast)}_breakdown.jpg")
 
             output[f"{sensortype.lower()}Wvls"] = radcal_wvl[ind_nocal == False]
             output[f"{sensortype.lower()}Unc"] = unc[ind_nocal == False]  # relative uncertainty
