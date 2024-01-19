@@ -351,7 +351,7 @@ class ProcessL1aqc_deglitch:
                     msg = f'***********Too few records in {gp.id} to continue after timestamp correction. Exiting.'
                     print(msg)
                     Utilities.writeLogFile(msg)
-                    return None
+                    # return None  # commented out for testing! TODO: remove
 
         if int(ConfigFile.settings["bL1aqcDeglitch"]) == 1:
             flagES = ProcessL1aqc_deglitch.processDataDeglitching(root, "ES")

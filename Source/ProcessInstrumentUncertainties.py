@@ -24,6 +24,7 @@ from Source.ProcessL1b_FRMCal import ProcessL1b_FRMCal
 from Source.Uncertainty_Analysis import Propagate
 from Source.CalibrationFileReader import CalibrationFileReader
 from Source.ProcessL1b_FactoryCal import ProcessL1b_FactoryCal
+from Source.Weight_RSR import Weight_RSR
 
 
 class Instrument(ABC):
@@ -399,24 +400,85 @@ class Instrument(ABC):
         output = {}
 
         if ConfigFile.settings["bL2WeightSentinel3A"]:
-            sample_lw_S3A = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3A, [sample_Lw, sample_wavelengths])
-            sample_rrs_S3A = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3A, [sample_Rrs, sample_wavelengths])
+            # Convolve to es, li and lt first
+            sample_es_S3A = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3A, [esSample, sample_wavelengths])
+            sample_li_S3A = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3A, [liSample, sample_wavelengths])
+            sample_lt_S3A = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3A, [ltSample, sample_wavelengths])
+
+            sample_rho_S3A = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3A, [rhoSample, sample_wavelengths])
+
+            # Process samples for future reporting
+            esDeltaBand = Propagate_L2_FRM.process_samples(None, sample_es_S3A)
+            liDeltaBand = Propagate_L2_FRM.process_samples(None, sample_li_S3A)
+            ltDeltaBand = Propagate_L2_FRM.process_samples(None, sample_lt_S3A)
+
+            rhoDeltaBand = Propagate_L2_FRM.process_samples(None, sample_rho_S3A)
+
+            # convert to lw and rrs
+            sample_lw_S3A = Propagate_L2_FRM.run_samples(Propagate.Lw_FRM, [sample_lt_S3A,
+                                                                        sample_rho_S3A,
+                                                                        sample_li_S3A
+                                                                            ])
+            sample_rrs_S3A = Propagate_L2_FRM.run_samples(Propagate.Rrs_FRM, [sample_lt_S3A,
+                                                                          sample_rho_S3A,
+                                                                          sample_li_S3A,
+                                                                          sample_es_S3A
+                                                                              ])
+
+
+            # sample_lw_S3A = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3A, [sample_Lw, sample_wavelengths])
+            # sample_rrs_S3A = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3A, [sample_Rrs, sample_wavelengths])
 
             lwDeltaBand = Propagate_L2_FRM.process_samples(None, sample_lw_S3A)
             rrsDeltaBand = Propagate_L2_FRM.process_samples(None, sample_rrs_S3A)
 
+            output["esUNC_Sentinel3A"] = {str(k): [val] for k, val in zip(Weight_RSR.Sentinel3Bands(), esDeltaBand)}
+            output["liUNC_Sentinel3A"] = {str(k): [val] for k, val in zip(Weight_RSR.Sentinel3Bands(), liDeltaBand)}
+            output["ltUNC_Sentinel3A"] = {str(k): [val] for k, val in zip(Weight_RSR.Sentinel3Bands(), ltDeltaBand)}
+            output["rhoUNC_Sentinel3A"] = {str(k): [val] for k, val in zip(Weight_RSR.Sentinel3Bands(), rhoDeltaBand)}
             output["lwUNC_Sentinel3A"] = lwDeltaBand
             output["rrsUNC_Sentinel3A"] = rrsDeltaBand
 
         if ConfigFile.settings["bL2WeightSentinel3B"]:
-            sample_lw_S3B = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3B, [sample_Lw, sample_wavelengths])
-            sample_rrs_S3B = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3B, [sample_Rrs, sample_wavelengths])
+            # Convolve to es, li and lt first
+            sample_es_S3B = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3B, [esSample, sample_wavelengths])
+            sample_li_S3B = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3B, [liSample, sample_wavelengths])
+            sample_lt_S3B = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3B, [ltSample, sample_wavelengths])
+
+            sample_rho_S3B = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3B,
+                                                          [rhoSample, sample_wavelengths])
+
+            # Process samples for future reporting
+            esDeltaBand = Propagate_L2_FRM.process_samples(None, sample_es_S3B)
+            liDeltaBand = Propagate_L2_FRM.process_samples(None, sample_li_S3B)
+            ltDeltaBand = Propagate_L2_FRM.process_samples(None, sample_lt_S3B)
+
+            rhoDeltaBand = Propagate_L2_FRM.process_samples(None, sample_rho_S3B)
+
+            # convert to lw and rrs
+            sample_lw_S3B = Propagate_L2_FRM.run_samples(Propagate.Lw_FRM, [sample_lt_S3B,
+                                                                            sample_rho_S3B,
+                                                                            sample_li_S3B
+                                                                            ])
+            sample_rrs_S3B = Propagate_L2_FRM.run_samples(Propagate.Rrs_FRM, [sample_lt_S3B,
+                                                                              sample_rho_S3B,
+                                                                              sample_li_S3B,
+                                                                              sample_es_S3B
+                                                                              ])
+
+            # sample_lw_S3B = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3B, [sample_Lw, sample_wavelengths])
+            # sample_rrs_S3B = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_S3B, [sample_Rrs, sample_wavelengths])
 
             lwDeltaBand = Propagate_L2_FRM.process_samples(None, sample_lw_S3B)
             rrsDeltaBand = Propagate_L2_FRM.process_samples(None, sample_rrs_S3B)
 
+            output["esUNC_Sentinel3B"] = {str(k): [val] for k, val in zip(Weight_RSR.Sentinel3Bands(), esDeltaBand)}
+            output["liUNC_Sentinel3B"] = {str(k): [val] for k, val in zip(Weight_RSR.Sentinel3Bands(), liDeltaBand)}
+            output["ltUNC_Sentinel3B"] = {str(k): [val] for k, val in zip(Weight_RSR.Sentinel3Bands(), ltDeltaBand)}
+            output["rhoUNC_Sentinel3B"] = {str(k): [val] for k, val in zip(Weight_RSR.Sentinel3Bands(), rhoDeltaBand)}
             output["lwUNC_Sentinel3B"] = lwDeltaBand
             output["rrsUNC_Sentinel3B"] = rrsDeltaBand
+
 
         if ConfigFile.settings['bL2WeightMODISA']:
             sample_lw_AQUA = Propagate_L2_FRM.run_samples(Propagate.band_Conv_Sensor_AQUA, [sample_Lw, sample_wavelengths])
@@ -921,7 +983,8 @@ class Instrument(ABC):
     def alphafunc(S1, S12):
         t1 = [Decimal(S1[i]) - Decimal(S12[i]) for i in range(len(S1))]
         t2 = [pow(Decimal(S12[i]), 2) for i in range(len(S12))]
-        return np.asarray([float(t1[i]/t2[i]) for i in range(len(t1))])
+        return np.asarray([float(t1[i]/t2[i]) if (t1[i] != Decimal('0') and t2[i] != Decimal('0')) else 0.0
+                           for i in range(len(t1))])
 
     @staticmethod
     def dark_Substitution(light, dark):
@@ -1427,12 +1490,17 @@ class HyperOCR(Instrument):
             # raw_filtered = np.asarray([raw_data[n][ind_raw_data] for n in range(nmes)])
             # dark_filtered = np.asarray([raw_dark[n][ind_raw_data] for n in range(nmes)])
             data = np.mean(raw_data, axis=0)  # raw data already dark subtracted, use mean for statistical analysis
+            data = np.append(data, np.zeros(75))  # temporarily added for processing 180 channel PML data
+            dark_data = np.mean(raw_dark, axis=0)
+            dark_data = np.append(dark_data, np.zeros(75))
 
             # signal uncertainties
             std_light = stats[sensortype]['std_Light']  # standard deviations are taken from generateSensorStats
+            std_light = np.append(std_light, np.zeros(75))
             std_dark = stats[sensortype]['std_Dark']
-            sample_light = cm.generate_sample(100, np.mean(raw_data, axis=0), std_light, "rand")
-            sample_dark = cm.generate_sample(100, np.mean(raw_dark, axis=0), std_dark, "rand")
+            std_dark = np.append(std_dark, np.zeros(75))
+            sample_light = cm.generate_sample(100, data, std_light, "rand")
+            sample_dark = cm.generate_sample(100, dark_data, std_dark, "rand")
             sample_dark_corr_data = prop.run_samples(self.dark_Substitution, [sample_light, sample_dark])
 
             # Non-linearity
@@ -1467,6 +1535,7 @@ class HyperOCR(Instrument):
             if sensortype == "ES":
                 solar_zenith = np.array(res_py6s['solar_zenith'])
                 direct_ratio = res_py6s['direct_ratio']
+                direct_ratio = np.append(direct_ratio, np.zeros(75))
 
                 sample_sol_zen = cm.generate_sample(mDraws, solar_zenith,
                                                     np.asarray([0.05 for i in range(np.size(solar_zenith))]),
