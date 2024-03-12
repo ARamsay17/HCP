@@ -199,3 +199,86 @@ class RhoCorrections:
             Utilities.writeLogFile(msg)
 
         return rhoVector, rhoDelta
+
+
+if __name__ == '__main__':
+
+    # import Propagate module
+    from Source.Uncertainty_Analysis import Propagate
+    from scipy.io import savemat
+
+    # initialise punpy
+    Prop_Obj = Propagate(M=10, cores=1)
+
+    # set fixed variables
+    cloud = None  # not used
+    wTemp = 26.2
+    sal = 35.0
+    waveBands = np.array([  # TODO: think if this could cause problems
+        351.9, 355.2, 358.5, 361.8, 365.1, 368.4, 371.7, 375.0, 378.3, 381.6, 384.9, 388.2, 391.5, 394.8, 398.1, 401.4,
+        404.7, 408.0, 411.3, 414.6, 417.9, 421.2, 424.5, 427.8, 431.1, 434.4, 437.7, 441.0, 444.3, 447.6, 450.9, 454.2,
+        457.5, 460.8, 464.1, 467.4, 470.7, 474.0, 477.3, 480.6, 483.9, 487.2, 490.5, 493.8, 497.1, 500.4, 503.7, 507.0,
+        510.3, 513.6, 516.9, 520.2, 523.5, 526.8, 530.1, 533.4, 536.7, 540.0, 543.3, 546.6, 549.9, 553.2, 556.5, 559.8,
+        563.1, 566.4, 569.7, 573.0, 576.3, 579.6, 582.9, 586.2, 589.5, 592.8, 596.1, 599.4, 602.7, 606.0, 609.3, 612.6,
+        615.9, 619.2, 622.5, 625.8, 629.1, 632.4, 635.7, 639.0, 642.3, 645.6, 648.9, 652.2, 655.5, 658.8, 662.1, 665.4,
+        668.7, 672.0, 675.3, 678.6, 681.9, 685.2, 688.5, 691.8, 695.1, 698.4, 701.7, 705.0, 708.3, 711.6, 714.9, 718.2,
+        721.5, 724.8, 728.1, 731.4, 734.7, 738.0, 741.3, 744.6, 747.9, 751.2, 754.5, 757.8, 761.1, 764.4, 767.7, 771.0,
+        774.3, 777.6, 780.9, 784.2, 787.5, 790.8, 794.1, 797.4, 800.7, 804.0, 807.3, 810.6, 813.9, 817.2, 820.5, 823.8,
+        827.1, 830.4, 833.7, 837.0, 840.3, 843.6, 846.9, 850.2, 853.5, 856.8, 860.1, 863.4, 866.7, 870.0, 873.3, 876.6,
+        879.9, 883.2, 886.5, 889.8, 893.1, 896.4, 899.7, 903.0, 906.3, 909.6, 912.9, 916.2, 919.5, 922.8, 926.1, 929.4,
+        932.7, 936.0, 939.3, 942.6, 945.9, 949.2, 952.5, 955.8, 959.1, 962.4, 965.7, 969.0, 972.3, 975.6, 978.9, 982.2,
+        985.5, 988.8
+    ], dtype=float)
+
+    # create lists to store results
+    N_0 = []  # first dimension of N=5 dim tensor, wind speed mean
+    U_0 = []  # first dim uncertainties
+
+    # import random as rand
+
+    import xarray as xr
+    import os
+
+    db_path = os.path.join(r"/", "home", "ar17", "PycharmProjects", "FRM4SOC", "HCP", "Z17_LUT.mat")
+    with xr.open_dataset(db_path, engine='netcdf4') as ds:
+        print(ds)
+
+    for windSpeedMean in np.arange(0, 16, 1):
+        N_1 = []  # second, aot
+        U_1 = []
+        for aot in np.arange(0, 0.25, 0.01):
+            N_2 = []  # third, solar zenith angle
+            U_2 = []
+            for sza in np.arange(0, 60, 2.5):
+                N_3 = []  # fourth, relative azimuth
+                U_3 = []
+                for relAz in np.arange(90, 135, 2.5):
+                    rho, unc = RhoCorrections.ZhangCorr(
+                        windSpeedMean,
+                        aot,
+                        cloud,
+                        sza,
+                        wTemp,
+                        sal,
+                        relAz,
+                        waveBands,
+                        Propagate=Prop_Obj
+                    )  # TODO: remember to index the wavebands properly
+                    # rho = rand.randint(0, 100)
+                    # unc = rand.randint(0, 5)
+                    N_3.append(rho)
+                    U_3.append(unc)
+                N_2.append(N_3)
+            N_1.append(N_2)
+        N_0.append(N_1)
+
+    Z17_out = {str(i): np.array(xi) for i, xi in enumerate(N_0)}
+    Z17_unc = {str(i): np.array(xi) for i, xi in enumerate(U_0)}
+
+    # tmp = {varname: Z17_out[varname] for varname in Z17_out.dtype.names}
+    savemat('Z17_LUT.mat', Z17_out)  # scipy.io savemat
+
+    # tmp = {varname: Z17_unc[varname] for varname in Z17_unc.dtype.names}
+    savemat('Z17_UNC_LUT.mat', Z17_unc)
+
+    # todo: activate zhang method and run on lyon!
