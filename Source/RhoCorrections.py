@@ -274,6 +274,18 @@ if __name__ == '__main__':
                             rho = [rand.randint(0, 100) for i in range(len(waveBands))]
                             unc = [rand.randint(0, 5) for i in range(len(waveBands))]
 
+                            file = os.path.join(f"{windSpeedMean}", f"{aot}", f"{sza}", f"{relAz}", f"{sal}", "rho.csv")
+                            u_file = os.path.join(f"{windSpeedMean}", f"{aot}", f"{sza}", f"{relAz}", f"{sal}", "rhoUnc.csv")
+
+                            with open(file, 'w') as f:
+                                f.write(f"{SST}: ")  # write down the SST value
+                                for rh in rho:  # then all the rho values
+                                    f.write(f"{rh},")
+                            with open(u_file, 'w') as f:
+                                f.write(f"{SST}: ")
+                                for u in unc:
+                                    f.write(f"{u},")
+
                             N_5.append(rho)
                             U_5.append(unc)
                         N_4.append(N_5)

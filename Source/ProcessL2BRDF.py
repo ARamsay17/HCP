@@ -20,7 +20,6 @@ class ProcessL2BRDF():
     #   https://gitlab.eumetsat.int/eumetlab/oceans/ocean-science-studies/ThoMaS
 
     @staticmethod
-
     def procBRDF(root,BRDF_option='M02'):
         '''
         Purpose: read all the necessary inputs to perform BRDF correction
