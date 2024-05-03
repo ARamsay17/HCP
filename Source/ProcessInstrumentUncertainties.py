@@ -1015,7 +1015,7 @@ class Instrument(ABC):
         zenith_ang = np.asarray([float(x) for x in zenith_ang])
         zen_unc = np.asarray([0.05 for x in zenith_ang])  # default of 0.5 for solar zenith unc
 
-        return [radcal_wvl, coserror, coserror_90, zenith_ang], [radcal_unc, cos_unc, cos90_unc, zen_unc]
+        return [radcal_wvl, coserror, coserror_90, zenith_ang], [radcal_unc, np.abs(cos_unc), np.abs(cos90_unc), zen_unc]
 
     @staticmethod
     def AZAvg_Coserr(coserror, coserror_90):
