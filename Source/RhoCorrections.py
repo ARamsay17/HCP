@@ -236,29 +236,29 @@ if __name__ == '__main__':
     unc_vars = []  # first dim uncertainties
 
     import random as rand
-
     import xarray as xr
     import os
 
     # db_path = os.path.join(r"/", "home", "ar17", "PycharmProjects", "FRM4SOC", "HCP", "Z17_LUT.mat")
     # with xr.open_dataset(db_path, engine='netcdf4') as ds:
     #     print(ds)
-    for windSpeedMean in np.arange(0, 15, 5):
-        N_1 = []  # second, aot
-        U_1 = []
-        for aot in [0, 0.05, 0.1, 0.2, 0.5]:
-            N_2 = []  # third, solar zenith angle
-            U_2 = []
-            for sza in np.arange(0, 65, 5):
-                N_3 = []  # fourth, relative azimuth
-                U_3 = []
-                for relAz in np.arange(80, 145, 5):
-                    N_4 = []
-                    U_4 = []
-                    for sal in np.arange(0, 45, 5):
-                        N_5 = []
-                        U_5 = []
-                        for SST in np.arange(0, 35, 5):
+
+    windspeed = np.arange(0, 15, 5)
+    AOT = np.array([0, 0.05, 0.1, 0.2, 0.5])
+    SZA = np.arange(0, 65, 5)
+    RELAZ = np.arange(80, 145, 5)
+    SAL = np.arange(0, 45, 5)
+    SST = np.arange(0, 35, 5)
+    data = np.zeros((len(windspeed), len(AOT), len(SZA), len(RELAZ), len(SAL), len(SST), len(waveBands)))
+    uncs = np.zeros((len(windspeed), len(AOT), len(SZA), len(RELAZ), len(SAL), len(SST), len(waveBands)))
+    for i_windspeed, windSpeedMean in enumerate(windspeed):
+        for i_aot, aot in enumerate(AOT):
+            for i_sza, sza in enumerate(SZA):
+                for i_relaz, relAz in enumerate(RELAZ):
+                    for i_sal, sal in enumerate(SAL):
+                        for i_wtemp, wtemp in enumerate(SST):
+                            data[i_windspeed, i_aot, i_sza, i_relaz, i_sal, i_wtemp] = [rand.randint(0, 100) for i in range(len(waveBands))]
+                            uncs[i_windspeed, i_aot, i_sza, i_relaz, i_sal, i_wtemp] = [rand.randint(0, 5) for i in range(len(waveBands))]
                             # rho, unc = RhoCorrections.ZhangCorr(
                             #     windSpeedMean,
                             #     aot,
@@ -271,91 +271,59 @@ if __name__ == '__main__':
                             #     Propagate=Prop_Obj
                             # )  # TODO: remember to index the wavebands properly
 
-                            rho = [rand.randint(0, 100) for i in range(len(waveBands))]
-                            unc = [rand.randint(0, 5) for i in range(len(waveBands))]
+                            # rho = [rand.randint(0, 100) for i in range(len(waveBands))]
+                            # unc = [rand.randint(0, 5) for i in range(len(waveBands))]
+    # ['wind', 'aot', 'sza', 'relAz', 'sal', 'SST', 'wavelength']
+    da = xr.DataArray(
+        data,
+        dims=['wind', 'aot', 'sza', 'relAz', 'sal', 'SST', 'wavelength'],
+        coords={
+            'wind': np.arange(0, 15, 5),
+            'aot': [0, 0.005, 0.1, 0.2, 0.5],
+            'sza': np.arange(0, 65, 5),
+            'relAz': np.arange(80, 145, 5),
+            'sal': np.arange(0, 45, 5),
+            'SST': np.arange(0, 35, 5),
+            'wavelength': waveBands,
+        },
+        attrs={
+            'description': "rho values for given inputs",
+            'units': ['ms-1', 'n/a', 'degrees', 'degrees', 'ppm', 'degrees-C']
+        },
+    )
 
-                            file = os.path.abspath(
-                                os.path.join(f"{windSpeedMean}", f"{aot}", f"{sza}", f"{relAz}", f"{sal}")
-                            )
+    du = xr.DataArray(
+        uncs,
+        dims=['wind', 'aot', 'sza', 'relAz', 'sal', 'SST', 'wavelength'],
+        coords={
+            'wind': np.arange(0, 15, 5),
+            'aot': [0, 0.005, 0.1, 0.2, 0.5],
+            'sza': np.arange(0, 65, 5),
+            'relAz': np.arange(80, 145, 5),
+            'sal': np.arange(0, 45, 5),
+            'SST': np.arange(0, 35, 5),
+            'wavelength': waveBands,
+        },
+        attrs={
+            'description': "rho uncertainty values for given inputs",
+            'units': ['ms-1', 'n/a', 'degrees', 'degrees', 'ppm', 'degrees-C']
+        },
+    )
 
-                            if not os.path.exists(file):
-                                os.makedirs(file)
+    da.to_netcdf('Z17_LUT.nc')  # , 'w', 'NETCDF4')
+    du.to_netcdf('Z17_UNC_LUT.nc')  # , 'w', 'NETCDF4')
 
+    da_2 = xr.open_dataset('Z17_LUT.nc')
+    du_2 = xr.open_dataset('Z17_UNC_LUT.nc')
 
-                            with open(os.path.join(file,  "rho.csv"), 'a') as f:
-                                f.write(f"{SST},:, ")  # write down the SST value
-                                for rh in rho:  # then all the rho values
-                                    f.write(f"{rh},")
-                                f.write("\n")
-                            with open(os.path.join(file, "rhoUnc.csv"), 'a') as f:
-                                f.write(f"{SST},:, ")
-                                for u in unc:
-                                    f.write(f"{u},")
-                                f.write("\n")
-
-        #                     N_5.append(rho)
-        #                     U_5.append(unc)
-        #                 N_4.append(N_5)
-        #                 U_4.append(U_5)
-        #             N_3.append(N_4)
-        #             U_3.append(U_4)
-        #         N_2.append(N_3)
-        #         U_2.append(U_3)
-        #     N_1.append(N_2)
-        #     U_1.append(U_2)
-        # data_vars.append(N_1)
-        # unc_vars.append(U_1)
-
-    # da = xr.DataArray(
-    #     data=np.array(data_vars),
-    #     dims=['wind', 'aot', 'sza', 'relAz', 'sal', 'SST', 'wavelength'],
-    #     coords={
-    #         'wind': np.arange(0, 15, 5),
-    #         'aot': [0, 0.005, 0.1, 0.2, 0.5],
-    #         'sza': np.arange(0, 65, 5),
-    #         'relAz': np.arange(80, 145, 5),
-    #         'sal': np.arange(0, 45, 5),
-    #         'SST': np.arange(0, 35, 5),
-    #         'wavelength': waveBands,
-    #     },
-    #     attrs={
-    #         'description': "rho values for given inputs",
-    #         'units': ['ms-1', 'n/a', 'degrees', 'degrees', 'ppm', 'degrees-C']
-    #     },
-    # )
-    #
-    # du = xr.DataArray(
-    #     data=np.array(unc_vars),
-    #     dims=['wind', 'aot', 'sza', 'relAz', 'sal', 'SST', 'wavelength'],
-    #     coords={
-    #         'wind': np.arange(0, 15, 5),
-    #         'aot': [0, 0.005, 0.1, 0.2, 0.5],
-    #         'sza': np.arange(0, 65, 5),
-    #         'relAz': np.arange(80, 145, 5),
-    #         'sal': np.arange(0, 45, 5),
-    #         'SST': np.arange(0, 35, 5),
-    #         'wavelength': waveBands,
-    #     },
-    #     attrs={
-    #         'description': "rho uncertainty values for given inputs",
-    #         'units': ['ms-1', 'n/a', 'degrees', 'degrees', 'ppm', 'degrees-C']
-    #     },
-    # )
-    #
-    # da.to_netcdf('Z17_LUT.nc', 'w', 'NETCDF4')
-    # du.to_netcdf('Z17_UNC_LUT.nc', 'w', 'NETCDF4')
-    #
-    # da_2 = xr.open_dataset('Z17_LUT.nc')
-    # du_2 = xr.open_dataset('Z17_UNC_LUT.nc')
-    #
-    # print(da, du)
+    print(da, du)
     # Z17_out = {str(i): np.array(xi) for i, xi in enumerate(data_vars)}
     # Z17_unc = {str(i): np.array(xi) for i, xi in enumerate(unc_vars)}
-    #
-    # # tmp = {varname: Z17_out[varname] for varname in Z17_out.dtype.names}
+
+    # tmp = {varname: Z17_out[varname] for varname in Z17_out.dtype.names}
     # savemat('Z17_LUT.mat', Z17_out)  # scipy.io savemat
-    #
-    # # tmp = {varname: Z17_unc[varname] for varname in Z17_unc.dtype.names}
+
+    # tmp = {varname: Z17_unc[varname] for varname in Z17_unc.dtype.names}
     # savemat('Z17_UNC_LUT.mat', Z17_unc)
 
     # todo: activate zhang method and run on lyon!
