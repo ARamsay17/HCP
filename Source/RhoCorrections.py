@@ -257,23 +257,22 @@ if __name__ == '__main__':
                 for i_relaz, relAz in enumerate(RELAZ):
                     for i_sal, sal in enumerate(SAL):
                         for i_wtemp, wtemp in enumerate(SST):
-                            data[i_windspeed, i_aot, i_sza, i_relaz, i_sal, i_wtemp] = [rand.randint(0, 100) for i in range(len(waveBands))]
-                            uncs[i_windspeed, i_aot, i_sza, i_relaz, i_sal, i_wtemp] = [rand.randint(0, 5) for i in range(len(waveBands))]
-                            # rho, unc = RhoCorrections.ZhangCorr(
-                            #     windSpeedMean,
-                            #     aot,
-                            #     cloud,
-                            #     sza,
-                            #     SST,
-                            #     sal,
-                            #     relAz,
-                            #     waveBands,
-                            #     Propagate=Prop_Obj
-                            # )  # TODO: remember to index the wavebands properly
+                            # data[i_windspeed, i_aot, i_sza, i_relaz, i_sal, i_wtemp] = [rand.randint(0, 100) for i in range(len(waveBands))]
+                            # uncs[i_windspeed, i_aot, i_sza, i_relaz, i_sal, i_wtemp] = [rand.randint(0, 5) for i in range(len(waveBands))]
+                            rho, unc = RhoCorrections.ZhangCorr(
+                                windSpeedMean,
+                                aot,
+                                cloud,
+                                sza,
+                                wtemp,
+                                sal,
+                                relAz,
+                                waveBands,
+                                Propagate=Prop_Obj
+                            )  # TODO: remember to index the wavebands properly
+                            data[i_windspeed, i_aot, i_sza, i_relaz, i_sal, i_wtemp] = rho
+                            uncs[i_windspeed, i_aot, i_sza, i_relaz, i_sal, i_wtemp] = unc
 
-                            # rho = [rand.randint(0, 100) for i in range(len(waveBands))]
-                            # unc = [rand.randint(0, 5) for i in range(len(waveBands))]
-    # ['wind', 'aot', 'sza', 'relAz', 'sal', 'SST', 'wavelength']
     da = xr.DataArray(
         data,
         dims=['wind', 'aot', 'sza', 'relAz', 'sal', 'SST', 'wavelength'],
@@ -311,20 +310,13 @@ if __name__ == '__main__':
     )
     ds = da.to_dataset(name="Glint")
     ds_u = du.to_dataset(name="Uncertainty")
-    ds.to_netcdf(r'C:\Users\ar17\PycharmProjects\FRM4SOC-2-32430\Z17_LUT.nc')  # , 'w', 'NETCDF4')
-    ds_u.to_netcdf(r'C:\Users\ar17\PycharmProjects\FRM4SOC-2-32430\Z17_UNC_LUT.nc')  # , 'w', 'NETCDF4')
 
-    da_2 = xr.open_dataset(r'C:\Users\ar17\PycharmProjects\FRM4SOC-2-32430\Z17_LUT.nc')
-    du_2 = xr.open_dataset(r'C:\Users\ar17\PycharmProjects\FRM4SOC-2-32430\Z17_UNC_LUT.nc')
+    fp = os.path.join('/home', 'ar17', 'PycharmProjects', 'FRM4SOC')
+    print(os.path.join(fp, 'Z17_LUT.nc'))
+    ds.to_netcdf(os.path.join(fp, 'Z17_LUT.nc'))  # , 'w', 'NETCDF4')
+    ds_u.to_netcdf(os.path.join(fp, 'Z17_UNC_LUT.nc'))  # , 'w', 'NETCDF4')
+
+    da_2 = xr.open_dataset(os.path.join(fp, 'Z17_LUT.nc'))
+    du_2 = xr.open_dataset(os.path.join(fp, 'Z17_UNC_LUT.nc'))
 
     print(da, du)
-    # Z17_out = {str(i): np.array(xi) for i, xi in enumerate(data_vars)}
-    # Z17_unc = {str(i): np.array(xi) for i, xi in enumerate(unc_vars)}
-
-    # tmp = {varname: Z17_out[varname] for varname in Z17_out.dtype.names}
-    # savemat('Z17_LUT.mat', Z17_out)  # scipy.io savemat
-
-    # tmp = {varname: Z17_unc[varname] for varname in Z17_unc.dtype.names}
-    # savemat('Z17_UNC_LUT.mat', Z17_unc)
-
-    # todo: activate zhang method and run on lyon!
