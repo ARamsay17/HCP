@@ -56,13 +56,16 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
     @abstractmethod
     def lightDarkStats(self, grp: Union[HDFGroup, list], slice: list, sensortype: str) -> dict[np.array]:
         """
+        method to return the noise (std before and after light-dark substitution) and averages for light and dark data. Refer to D-10 figure-8, Eq-10 for Radiance 
+        and figure-9, Eq-11 for Irradiance. Both figures and equations indicate signal as "S" with std Dark/Light being DN_dark/DN_light respectively. 
+
         :param grp: HDFGroup representing the sensor specific data
         :param slice: Ensembled sensor data
         :param sensortype: sensor name
 
         :return:
         """
-        # abstract method indicates the requirement for all child classes to have a lightDarkStats method, this will be
+        # abstract method indicates the requirement for all child/derived classes to have a lightDarkStats method, this will be
         # sensor specific and is required for generateSensorStats. For Dalec (or other sensors) it must be a function
         # that outputs a dictionary containing:
         # {
@@ -78,6 +81,9 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
     def generateSensorStats(self, InstrumentType: str, rawData: dict, rawSlice: dict, newWaveBands: np.array
                             ) -> dict[str: np.array]:
         """
+        Generate Sensor Stats calls lightDarkStats for a given instrument. Once sensor statistics are known, they are 
+        interpolated to common wavebands to match the other L1B sensor inputs Es, Li, & Lt.
+
         :return: dictionary of statistics used later in the processing pipeline. Keys are:
         [ave_Light, ave_Dark, std_Light, std_Dark, std_Signal]
         """
@@ -132,8 +138,23 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
                 # this interpolation is giving an array back of a slightly different size in the new wave bands
         return output
 
-    def read_uncertainties(self, node, uncGrp, cCal, cCoef, cStab, cLin, cStray, cT, cPol, cCos) -> Optional[np.array]:
-
+    def read_uncertainties(self, node: HDFRoot, uncGrp: HDFGroup, cCal: dict, cCoef: dict, cStab: dict, cLin: dict, 
+    cStray: dict, cT: dict, cPol: dict, cCos: dict) -> Optional[np.array]:
+        """
+        reads the uncertainties from the HDF file, must return indicated raw bands, i.e. which bands we have uncertainty 
+        values saved in the cal/char files.
+        
+        :param node: HDFRoot of input HDF is required to retrieve calibration file start and stop for slicing straylight
+        :param uncGrp: HDFGroup Uncertainties from HDF is required to retrieve uncertainties
+        :param cCal: dict to contain calibration
+        :param cCoef: dict to contain calibration coefficient uncertainty
+        :param cStab: dict to contain stability information
+        :param cLin: dict to contain non-linearity information
+        :param cStray: dict to contain straylight information
+        :param cT: dict to contain temperature correction information
+        :param cPol: dict to contain polarisation information
+        :param cCos: dict to contain cosine response information
+        """
         for s in ["ES", "LI", "LT"]:  # s for sensor type
             cal_start = None
             cal_stop = None
@@ -194,6 +215,8 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
 
     def ClassBased(self, node: HDFRoot, uncGrp: HDFGroup, stats: dict[str, np.array]) -> Union[dict[str, dict], bool]:
         """
+        Propagates class based uncertainties for all instruments. If no calibration uncertainties are available will use Sirrex-7 
+        to propagate uncertainties in the SeaBird Case. See D-10 secion 5.3.1.
 
         :param node: HDFRoot containing all L1BQC data
         :param uncGrp: HDFGroup containing raw uncertainties
@@ -340,7 +363,9 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
     def FRM(self, node: HDFRoot, uncGrp: HDFGroup, raw_grps: dict[str, HDFGroup], raw_slices: dict[str, np.array],
             stats: dict, newWaveBands: np.array) -> dict[str, np.array]:
         """
-        :param node: HDFRoot of L1BQC data for procressing
+        Propagates instrument uncertainties with corrections (except polarisation) if full characterisation available - see D-10 section 5.3.1
+
+        :param node: HDFRoot of L1BQC data for processing
         :param uncGrp: HDFGroup of uncertainty budget
         :param raw_grps: dictionary of raw data groups
         :param raw_slices: dictionary of sliced data for specific sensors
@@ -355,6 +380,8 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
     def FRM_L2(self, rhoScalar: float, rhoVec: np.array, rhoDelta: np.array, waveSubset: np.array,
                xSlice: dict[str, np.array]) -> dict[str, np.array]:
         """
+        Propagates Lw and Rrs uncertainties if full characterisation available - see D-10 5.3.1
+
         :param rhoScalar: rho input if Mobley99 or threeC rho is used
         :param rhoVec: rho input if Zhang17 rho is used
         :param rhoDelta: uncertainties associated with rho
@@ -423,6 +450,7 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
 
     def ClassBasedL2(self, node, uncGrp, rhoScalar, rhoVec, rhoDelta, waveSubset, xSlice) -> dict:
         """
+        Propagates class based uncertainties for all Lw and Rrs. See D-10 secion 5.3.1.
 
         :param node: HDFRoot which stores L1BQC data
         :param uncGrp: HDFGroup storing the uncertainty budget
@@ -639,7 +667,17 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
             return ds
 
     @staticmethod
-    def extract_factory_cal(node, radcal, s, cCal, cCoef):
+    def extract_factory_cal(node: HDFRoot, radcal: HDFDataset, s: str, cCal: dict, cCoef: dict)->None:
+        """
+        small function to get the calibration and calibration uncertainty, mutates cCal and cCoef in lieu of return value
+
+        :param node: HDF root - full HDF file
+        :param radcal: HDF group containing radiometric calibration
+        :param s: dict key to append data to cCal and cCoef
+        :param cCal: dict for storing calibration
+        :param cCoef: dict for storing calibration coeficients 
+        """
+
         # ADERU : Read radiometric coeff value from configuration files
         cCal[s] = np.asarray(list(radcal.columns['unc']))
         calFolder = os.path.splitext(ConfigFile.filename)[0] + "_Calibration"
@@ -647,11 +685,25 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
         calibrationMap = CalibrationFileReader.read(calPath)
         waves, cCoef[s] = ProcessL1b_FactoryCal.extract_calibration_coeff(node, calibrationMap, s)
 
-    def get_band_outputs(self, sensor_key: str, rho, lw_means, lw_uncertainties, rrs_means, rrs_uncertainties,
-                         esUNC, liUNC, ltUNC, rhoUNC, waveSubset, xSlice) -> dict:
+    def get_band_outputs(self, sensor_key: str, rho: np.array, lw_means: list, lw_uncertainties: list, rrs_means: list, rrs_uncertainties: list,
+                         esUNC: np.array, liUNC: np.array, ltUNC: np.array, rhoUNC: np.array, waveSubset: np.array, xSlice: dict) -> dict:
 
         """
         runs band convolution for class-based regime
+
+        :param sensor_key: sensor key for self._SATELLITES depending on target for band conv
+        :param rho: rho values provided by M99 or Z17 (depending on user settings)
+        :param lw_means: class based regime mean values for Lw inputs
+        :param lw_uncertainties: class based regime uncertainty values for Lw inputs
+        :param rrs_means: class based regime mean values for Rrs inputs
+        :param rrs_uncertainties: class based regime uncertainty values for Rrs inputs
+        :param esUNC: Es uncertainty values
+        :param liUNC: Li uncertainty values
+        :param ltUNC: Lt uncertainty values
+        :param rhoUNC: rho uncertainty values
+        :param waveSubset: subset of wavelengths for L2 products to be interpolated to
+        :param xSlice: dictionary for storing outputs
+
         """
 
         if ConfigFile.settings[self._SATELLITES[sensor_key]['config']]:
@@ -720,7 +772,15 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
                              ) -> dict:
         """
         runs band convolution for FRM regime
-        """
+
+        :param sensor_key: sensor key for self._SATELLITES depending on target for band conv
+        :param MCP_obj: Monte Carlo propagation object for accessing measurment functions and punpy/comet_maths methods
+        :param esSample: Monte Carlo sample (wavelengths x Mdraws) generated for Es 
+        :param liSample: Monte Carlo sample (wavelengths x Mdraws) generated for Li 
+        :param ltSample: Monte Carlo sample (wavelengths x Mdraws) generated for Lt 
+        :param rhoSample: Monte Carlo sample (wavelengths x Mdraws) generated for rho
+         """
+        
         # now requires MCP_obj to be a Propagate object as def_sensor_mfunc is not a static method
         if ConfigFile.settings[self._SATELLITES[sensor_key]['config']]:
             sensor_name = self._SATELLITES[sensor_key]['name']
@@ -1292,7 +1352,20 @@ class HyperOCR(BaseInstrument):
             std_Signal=stdevSignal,
             )
 
-    def FRM(self, node, uncGrp, raw_grps, raw_slices, stats, newWaveBands):
+    # def FRM(self, node, uncGrp, raw_grps, raw_slices, stats, newWaveBands):
+    def FRM(self, node: HDFRoot, uncGrp: HDFGroup, raw_grps: dict[str, HDFGroup], raw_slices: dict[str, np.array], 
+            stats: dict[str, Union[dict, str]], newWaveBands: np.array) -> dict[str, np.array]:
+        """
+        FRM regime propagation instrument uncertainties for HyperOCR, see D10 section 5.3.2 for more information.
+
+        :param node: HDFRoot containing entire HDF file
+        :param uncGrp: HDFGroup containing uncertainties from HDF file
+        :param raw_grps: raw data dictionary containing Es, Li, & Lt as HDFGroups
+        :param raw_slices: sliced raw data dictionary containing Es, Li, & Lt as np.arrays
+        :param stats: nested dictionaries containing the output of LightDarkStats
+        :param newWaveBands: common wavebands for interpolation of output
+        """
+
         # calibration of HyperOCR following the FRM processing of FRM4SOC2
         output = {}
         for sensortype in ['ES', 'LI', 'LT']:
@@ -1781,7 +1854,18 @@ class Trios(BaseInstrument):
             std_Signal=stdevSignal,
         )
 
-    def FRM(self, node, uncGrp, raw_grps, raw_slices, stats, newWaveBands):
+    def FRM(self, node: HDFRoot, uncGrp: HDFGroup, raw_grps: dict[str, HDFGroup], raw_slices: dict[str, np.array], 
+            stats: None, newWaveBands: np.array) -> dict[str, np.array]:
+        """
+        FRM regime propagation instrument uncertainties, see D10 section 5.3.2 for more information.
+
+        :param node: HDFRoot containing entire HDF file
+        :param uncGrp: HDFGroup containing uncertainties from HDF file
+        :param raw_grps: raw data dictionary containing Es, Li, & Lt as HDFGroups
+        :param raw_slices: sliced raw data dictionary containing Es, Li, & Lt as np.arrays
+        :param stats: not required for TriOS specific processing, set to None at start of method
+        :param newWaveBands: common wavebands for interpolation of output
+        """
         # TriOS specific
         output = {}
         stats = None  # stats is unused in this method, but required as an input because of Seabird

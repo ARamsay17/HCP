@@ -276,6 +276,13 @@ class ProcessL1b_FRMCal:
 
     @staticmethod
     def Zong_SL_correction_matrix(LSF, n_IB: int = 3):
+        """
+        Simple spectral stray light correction method for array spectroradiometers (2005)
+        Yuqin Zong, Steven W. Brown, B. Carol Johnson, Keith R. Lykke, and Yoshi Ohno
+
+        :param LSF: Straylight matrix (read from char files)
+        :param n_IB: band width - set to 3 but can be varied for Monte Carlo uncertainty propagation
+        """
         LSF[LSF<=0] = 0
         SDF = np.copy(LSF)
         for i in range(len(LSF)):
