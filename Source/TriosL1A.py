@@ -227,10 +227,13 @@ class TriosL1A:
         #Create Data (LI,LT,ES) dataset
         ds_dt = np.dtype({'names': wl,'formats': [np.float64]*len(wl)})
         my_arr = np.array(data).transpose()
+
+        if len(my_arr) == 256:  # if the TriOS array is 256 channels cut of the first channel for consistency
+            my_arr = my_arr[1:]
+
         rec_arr = np.rec.fromarrays(my_arr, dtype=ds_dt)
         gp.addDataset(sensor)
         gp.datasets[sensor].data=np.array(rec_arr, dtype=ds_dt)
-
 
         # Calibrations files
         metacal,cal = TriosL1A.read_cal(cal_path + 'Cal_SAM_'+name+'.dat')
