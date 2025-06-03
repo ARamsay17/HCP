@@ -1561,19 +1561,20 @@ class ProcessL2:
                 xUNC.update(instrument.FRM_L2(rhoScalar, rhoVec, rhoUNC, waveSubset, xSlice))
 
                 if ConfigFile.settings['bL2UncertaintyBreakdownPlot']:
-                    from Source.Uncertainty_Visualiser import UncertaintyGUI
-                    gui = UncertaintyGUI()
-                    gui.plot_FRM(
-                        node, 
-                        uncGroup,
-                        dict(ES=esRawGroup, LI=liRawGroup, LT=ltRawGroup),
-                        dict(ES=esRawSlice, LI=liRawSlice, LT=ltRawSlice), 
-                        stats,
-                        rhoScalar, 
-                        rhoVec, 
-                        rhoUNC, 
-                        waveSubset
-                    )
+                    print("Not yet implemented")
+                    # from Source.Uncertainty_Visualiser import UncertaintyGUI
+                    # gui = UncertaintyGUI()
+                    # gui.plot_FRM(
+                    #     node, 
+                    #     uncGroup,
+                    #     dict(ES=esRawGroup, LI=liRawGroup, LT=ltRawGroup),
+                    #     dict(ES=esRawSlice, LI=liRawSlice, LT=ltRawSlice), 
+                    #     stats,
+                    #     rhoScalar, 
+                    #     rhoVec, 
+                    #     rhoUNC, 
+                    #     waveSubset
+                    # )
 
         msg = f'Uncertainty Update Elapsed Time: {time.process_time() - tic:.1f} s'
         print(msg)
