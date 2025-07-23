@@ -1,48 +1,204 @@
-
+""" A cornucopia of addition methods """
 import os
-import datetime
+from datetime import datetime, timedelta, timezone
 import collections
-
-import pytz
 from collections import Counter
 import csv
 import re
-
+import logging
+import hashlib
+from tqdm import tqdm
+import requests
 from PyQt5.QtWidgets import QMessageBox
-
+import pytz
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import cm
+import matplotlib.dates as mdates
 import numpy as np
 import scipy.interpolate
 from scipy.interpolate import splev, splrep
 import scipy as sp
 import pandas as pd
 from pandas.plotting import register_matplotlib_converters
-register_matplotlib_converters()
-from tqdm import tqdm
 
+from Source import PACKAGE_DIR as dirPath
 from Source.SB_support import readSB
-
 from Source.HDFRoot import HDFRoot
 from Source.ConfigFile import ConfigFile
 from Source.MainConfig import MainConfig
+# from Source.Uncertainty_Visualiser import Show_Uncertainties  # class for uncertainty visualisation plots
+register_matplotlib_converters()
 
 # This gets reset later in Controller.processSingleLevel to reflect the file being processed.
 if "LOGFILE" not in os.environ:
     os.environ["LOGFILE"] = "temp.log"
 
 class Utilities:
+    """A catchall class for HyperCP utilities"""
 
     @staticmethod
-    def checkInputFiles(inFilePath, flag_Trios, level="L1A+"):
+    def downloadZhangLUT(fpfZhangLUT, force=False):
+        infoText = "  NEW INSTALLATION\nGlint LUTs required.\nClick OK to download.\n\nThis comprisese two 200 MB files.\n\n\
+        If canceled, Zhang et al. (2017) glint correction will revert to slower analytical solution. If download fails, a link and instructions will be provided in the terminal."
+        YNReply = True if force else Utilities.YNWindow("Database Download", infoText) == QMessageBox.Ok
+        if YNReply:
+
+            url = "https://oceancolor.gsfc.nasa.gov/fileshare/dirk_aurin/Z17_LUT_40.nc"
+            download_session = requests.Session()
+            try:
+                file_size = int(
+                    download_session.head(url).headers["Content-length"]
+                ) # If this fails, check the file permissions on the server.
+                file_size_read = round(int(file_size) / (1024**3), 2)
+                print(
+                    f"##### Downloading {file_size_read}GB data file. ##### "
+                )
+                download_file = download_session.get(url, stream=True)
+                download_file.raise_for_status()
+            except requests.exceptions.HTTPError as err:
+                print("Error in download_file:", err)
+            if download_file.ok:
+                progress_bar = tqdm(
+                    total=file_size, unit="iB", unit_scale=True, unit_divisor=1024
+                )
+                with open(fpfZhangLUT, "wb") as f:
+                    for chunk in download_file.iter_content(chunk_size=1024):
+                        progress_bar.update(len(chunk))
+                        f.write(chunk)
+                progress_bar.close()
+
+                # Check the hash of the file
+                print('Checking file...')
+                thisHash = Utilities.md5(fpfZhangLUT)
+                if thisHash == '1a33ed647d9c7359b0800915bd0229c7':
+                    print('File checks out.')
+                else:
+                    print(f'Error in downloaded file {fpfZhangLUT}. Recommend you delete the downloaded file and try again.')
+                    print(
+                    f"Try download from {url} (e.g. copy paste this URL in your internet browser) and place under"
+                    f" {dirPath}/Data directory."
+                )
+            else:
+                print(
+                    "Failed to download core databases."
+                    f"Try download from {url} (e.g. copy paste this URL in your internet browser) and place under"
+                    f" {dirPath}/Data directory."
+                )
+
+            # url = "https://oceancolor.gsfc.nasa.gov/fileshare/dirk_aurin/Z17_LUT_30.nc"
+            # download_session = requests.Session()
+            # try:
+            #     file_size = int(
+            #         download_session.head(url).headers["Content-length"]
+            #     )# If this fails, check the file permissions on the server.
+            #     file_size_read = round(int(file_size) / (1024**3), 2)
+            #     print(
+            #         f"##### Downloading {file_size_read}GB data file. ##### "
+            #     )
+            #     download_file = download_session.get(url, stream=True)
+            #     download_file.raise_for_status()
+            # except requests.exceptions.HTTPError as err:
+            #     print("Error in download_file:", err)
+            # if download_file.ok:
+            #     progress_bar = tqdm(
+            #         total=file_size, unit="iB", unit_scale=True, unit_divisor=1024
+            #     )
+            #     with open(fpfZhangLUT, "wb") as f:
+            #         for chunk in download_file.iter_content(chunk_size=1024):
+            #             progress_bar.update(len(chunk))
+            #             f.write(chunk)
+            #     progress_bar.close()
+
+            #     # Check the hash of the file
+            #     print('Checking file...')
+            #     thisHash = Utilities.md5(fpfZhangLUT)
+            #     if thisHash == '1a33ed647d9c7359b0800915bd0229c7':
+            #         print('File checks out.')
+            #     else:
+            #         print(f'Error in downloaded file {fpfZhangLUT}. Recommend you delete the downloaded file and try again.')
+            #         print(
+            #         f"Try download from {url} (e.g. copy paste this URL in your internet browser) and place under"
+            #         f" {dirPath}/Data directory."
+            #     )
+
+            # else:
+            #     print(
+            #         "Failed to download core databases."
+            #         f"Try download from {url} (e.g. copy paste this URL in your internet browser) and place under"
+            #         f" {dirPath}/Data directory."
+                # )
+
+    @staticmethod
+    def downloadZhangDB(fpfZhang, force=False):
+        infoText = "  NEW INSTALLATION\nGlint database required.\nClick OK to download.\n\nWARNING: THIS IS A 2.8 GB DOWNLOAD.\n\n\
+        If canceled, Zhang et al. (2017) glint correction will fail. If download fails, a link and instructions will be provided in the terminal."
+        YNReply = True if force else Utilities.YNWindow("Database Download", infoText) == QMessageBox.Ok
+        if YNReply:
+
+            url = "https://oceancolor.gsfc.nasa.gov/fileshare/dirk_aurin/Zhang_rho_db_expanded.mat"
+            download_session = requests.Session()
+            try:
+                file_size = int(
+                    download_session.head(url).headers["Content-length"]
+                )# If this fails, check the file permissions on the server.
+                file_size_read = round(int(file_size) / (1024**3), 2)
+                print(
+                    f"##### Downloading {file_size_read}GB data file. This could take several minutes. ##### "
+                )
+                download_file = download_session.get(url, stream=True)
+                download_file.raise_for_status()
+            except requests.exceptions.HTTPError as err:
+                print("Error in download_file:", err)
+            if download_file.ok:
+                progress_bar = tqdm(
+                    total=file_size, unit="iB", unit_scale=True, unit_divisor=1024
+                )
+                with open(fpfZhang, "wb") as f:
+                    for chunk in download_file.iter_content(chunk_size=1024):
+                        progress_bar.update(len(chunk))
+                        f.write(chunk)
+                progress_bar.close()
+
+                # Check the hash of the file
+                print('Checking file...')
+                thisHash = Utilities.md5(fpfZhang)
+                if thisHash == 'e4c155f8ce92dcfa012a450a56b64e28':
+                    print('File checks out.')
+                else:
+                    print(f'Error in downloaded file {fpfZhang}. Recommend you delete the downloaded file and try again.')
+                    print(
+                    f"Try download from {url} (e.g. copy paste this URL in your internet browser) and place under"
+                    f" {dirPath}/Data directory."
+                )
+
+            else:
+                print(
+                    "Failed to download core databases."
+                    f"Try download from {url} (e.g. copy paste this URL in your internet browser) and place under"
+                    f" {dirPath}/Data directory."
+                )
+
+    @staticmethod
+    def md5(fname):
+        hash_md5 = hashlib.md5()
+        with open(fname, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+
+    @staticmethod
+    def checkInputFiles(inFilePath, level="L1A+"):
+        if ConfigFile.settings['SensorType'].lower() == 'trios':
+            flag_Trios = True
+        else:
+            flag_Trios = False
         if flag_Trios and level == "L1A":
             for fp in inFilePath:
                 if not os.path.isfile(fp):
                     msg = 'No such file...'
                     if not MainConfig.settings['popQuery']:
                         Utilities.errorWindow("File Error", msg)
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return False
                 else:
                     return True
@@ -61,37 +217,32 @@ class Utilities:
     def checkOutputFiles(outFilePath):
         if os.path.isfile(outFilePath):
             modTime = os.path.getmtime(outFilePath)
-            nowTime = datetime.datetime.now()
+            nowTime = datetime.now()
             if nowTime.timestamp() - modTime < 60: # If the file exists and was created in the last minute...
-                # msg = f'{level} file produced: \n {outFilePath}'
+                # Utilities.writeLogFileAndPrint(f'{level} file produced: \n {outFilePath}'
                 # print(msg)
                 # Utilities.writeLogFile(msg)
-                msg = f'Process Single Level: {outFilePath} - SUCCESSFUL'
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(f'Process Single Level: {outFilePath} - SUCCESSFUL')
             else:
-                msg = f'Process Single Level: {outFilePath} - NOT SUCCESSFUL'
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(f'Process Single Level: {outFilePath} - NOT SUCCESSFUL')
         else:
-            msg = f'Process Single Level: {outFilePath} - NOT SUCCESSFUL'
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(f'Process Single Level: {outFilePath} - NOT SUCCESSFUL')
+
 
     @staticmethod
     def SASUTCOffset(node):
         for gp in node.groups:
             if not gp.id.startswith("SATMSG"): # Don't convert these strings to datasets.
 
-                    timeStamp = gp.datasets["DATETIME"].data
-                    timeStampNew = [time + datetime.timedelta(hours=ConfigFile.settings["fL1aUTCOffset"]) for time in timeStamp]
-                    TimeTag2 = [Utilities.datetime2TimeTag2(dt) for dt in timeStampNew]
-                    DateTag = [Utilities.datetime2DateTag(dt) for dt in timeStampNew]
-                    gp.datasets["DATETIME"].data = timeStampNew
-                    gp.datasets["DATETAG"].data["NONE"] = DateTag
-                    gp.datasets["DATETAG"].datasetToColumns()
-                    gp.datasets["TIMETAG2"].data["NONE"] = TimeTag2
-                    gp.datasets["TIMETAG2"].datasetToColumns()
+                timeStamp = gp.datasets["DATETIME"].data
+                timeStampNew = [time + datetime.timedelta(hours=ConfigFile.settings["fL1aUTCOffset"]) for time in timeStamp]
+                TimeTag2 = [Utilities.datetime2TimeTag2(dt) for dt in timeStampNew]
+                DateTag = [Utilities.datetime2DateTag(dt) for dt in timeStampNew]
+                gp.datasets["DATETIME"].data = timeStampNew
+                gp.datasets["DATETAG"].data["NONE"] = DateTag
+                gp.datasets["DATETAG"].datasetToColumns()
+                gp.datasets["TIMETAG2"].data["NONE"] = TimeTag2
+                gp.datasets["TIMETAG2"].datasetToColumns()
 
         return node
 
@@ -112,11 +263,9 @@ class Utilities:
             fp = 'Data/hybrid_reference_spectrum_p1nm_resolution_c2020-09-21_with_unc.nc'
             # fp = 'Data/Thuillier_F0.sb'
             # print("SB_support.readSB: " + fp)
-            print("Reading : " + fp)
+            # print("Reading : " + fp)
             if not HDFRoot.readHDF5(fp):
-                msg = "Unable to read TSIS-1 netcdf file."
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint("Unable to read TSIS-1 netcdf file.")
                 return None
             else:
                 F0_hybrid = HDFRoot.readHDF5(fp)
@@ -145,8 +294,8 @@ class Utilities:
         avg_f0 = np.empty(len(wavelength))
         avg_f0[:] = np.nan
         avg_f0_unc = avg_f0.copy()
-        for i in range(len(wavelength)):
-            idx = np.where((wv_raw >= wavelength[i]-5.) & ( wv_raw <= wavelength[i]+5.))
+        for i, wv in enumerate(wavelength):
+            idx = np.where((wv_raw >= wv-5.) & ( wv_raw <= wv+5.))
             if idx:
                 avg_f0[i] = np.mean(F0_fs[idx])
                 avg_f0_unc[i] = np.mean(F0_unc_raw[idx])
@@ -158,6 +307,7 @@ class Utilities:
         F0_unc = collections.OrderedDict(zip(wavelengthStr, avg_f0_unc))
 
         return F0, F0_unc, F0_raw, F0_unc_raw, wv_raw
+
 
     @staticmethod
     def Thuillier(dateTag, wavelength):
@@ -173,9 +323,7 @@ class Utilities:
         fp = 'Data/Thuillier_F0.sb'
         print("SB_support.readSB: " + fp)
         if not readSB(fp, no_warn=True):
-            msg = "Unable to read Thuillier file. Make sure it is in SeaBASS format."
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint("Unable to read Thuillier file. Make sure it is in SeaBASS format.")
             return None
         else:
             Thuillier = readSB(fp, no_warn=True)
@@ -197,10 +345,12 @@ class Utilities:
 
         return F0
 
+
     @staticmethod
     def mostFrequent(List):
         occurence_count = Counter(List)
         return occurence_count.most_common(1)[0][0]
+
 
     @staticmethod
     def find_nearest(array,value):
@@ -208,15 +358,11 @@ class Utilities:
         idx = (np.abs(array - value)).argmin()
         return idx
 
-        # ''' ONLY FOR SORTED ARRAYS'''
-        # idx = np.searchsorted(array, value, side="left")
-        # if idx > 0 and (idx == len(array) or math.fabs(value - array[idx-1]) < math.fabs(value - array[idx])):
-        #     return array[idx-1]
-        # else:
-        #     return array[idx]
 
     @staticmethod
     def errorWindow(winText,errorText):
+        if os.environ["HYPERINSPACE_CMD"].lower() == 'true':
+            return
         msgBox = QMessageBox()
         # msgBox.setIcon(QMessageBox.Information)
         msgBox.setIcon(QMessageBox.Critical)
@@ -226,18 +372,9 @@ class Utilities:
         msgBox.exec_()
 
     @staticmethod
-    def waitWindow(winText,waitText):
-        msgBox = QMessageBox()
-        # msgBox.setIcon(QMessageBox.Information)
-        msgBox.setIcon(QMessageBox.Critical)
-        msgBox.setText(waitText)
-        msgBox.setWindowTitle(winText)
-        # msgBox.setStandardButtons(QMessageBox.Ok)
-        # msgBox.exec_()
-        return msgBox
-
-    @staticmethod
     def YNWindow(winText,infoText):
+        if os.environ["HYPERINSPACE_CMD"].lower() == 'true':
+            return QMessageBox.Ok  # Assume positive answer to keep processing in command line mode (no X)
         msgBox = QMessageBox()
         msgBox.setIcon(QMessageBox.Information)
         msgBox.setText(infoText)
@@ -247,8 +384,17 @@ class Utilities:
         return returnValue
 
     @staticmethod
+    def writeLogFileAndPrint(logText, andPrint=True, mode='a'):
+        Utilities.writeLogFile(logText, mode)
+        if andPrint:
+            print(logText)
+
+    @staticmethod
     def writeLogFile(logText, mode='a'):
-        with open('Logs/' + os.environ["LOGFILE"], mode) as logFile:
+        if not os.path.exists('Logs'):
+            logging.getLogger().warning('Made directory: Logs/')
+            os.mkdir('Logs')
+        with open('Logs/' + os.environ["LOGFILE"], mode, encoding="utf-8") as logFile:
             logFile.write(logText + "\n")
 
     # Converts degrees minutes to decimal degrees format
@@ -294,12 +440,12 @@ class Utilities:
         m = int(t[2:4])
         s = int(t[4:6])
         us = 10000*int(dec) # i.e. 0.55 s = 550,000 us
-        return datetime.datetime(dt.year,dt.month,dt.day,h,m,s,us,tzinfo=datetime.timezone.utc)
+        return datetime(dt.year,dt.month,dt.day,h,m,s,us,tzinfo=timezone.utc)
 
     # Converts datetag (YYYYDDD) to date string
     @staticmethod
     def dateTagToDate(dateTag):
-        dt = datetime.datetime.strptime(str(int(dateTag)), '%Y%j')
+        dt = datetime.strptime(str(int(dateTag)), '%Y%j')
         timezone = pytz.utc
         dt = timezone.localize(dt)
         return dt.strftime('%Y%m%d')
@@ -307,7 +453,7 @@ class Utilities:
     # Converts datetag (YYYYDDD) to datetime
     @staticmethod
     def dateTagToDateTime(dateTag):
-        dt = datetime.datetime.strptime(str(int(dateTag)), '%Y%j')
+        dt = datetime.strptime(str(int(dateTag)), '%Y%j')
         timezone = pytz.utc
         dt = timezone.localize(dt)
         return dt
@@ -348,9 +494,7 @@ class Utilities:
         m = int(t[2:4])
         s = int(t[4:6])
         us = 1000*int(t[6:])
-        # print(h, m, s, us)
-        # print(tt2)
-        return datetime.datetime(dt.year,dt.month,dt.day,h,m,s,us,tzinfo=datetime.timezone.utc)
+        return datetime(dt.year,dt.month,dt.day,h,m,s,us,tzinfo=timezone.utc)
 
     # Converts datetime to Timetag2 (HHMMSSmmm)
     @staticmethod
@@ -386,17 +530,20 @@ class Utilities:
         date = str(gpsDate).zfill(6)
         day = int(date[:2])
         mon = int(date[2:4])
-        return datetime.datetime(year,mon,day,0,0,0,0,tzinfo=datetime.timezone.utc)
+        return datetime(year,mon,day,0,0,0,0,tzinfo=timezone.utc)
 
 
-    # Add a dataset to each group for DATETIME, as defined by TIMETAG2 and DATETAG
-    # Also screens for nonsense timetags like 0.0 or NaN, and datetags that are not
-    # in the 20th or 21st centuries
     @staticmethod
     def rootAddDateTime(node):
+        ''' Add a dataset to each group for DATETIME, as defined by TIMETAG2 and DATETAG
+         Also screens for nonsense timetags like 0.0 or NaN, and datetags that are not
+         in the 20th or 21st centuries '''
+
         for gp in node.groups:
             # print(gp.id)
-            if gp.id != "SOLARTRACKER_STATUS" and "UNCERT" not in gp.id and gp.id != "SATMSG.tdf": # No valid timestamps in STATUS
+            # Don't add to the following:
+            noAddList = ("SOLARTRACKER_STATUS","SATMSG.tdf","CAL_COEF")
+            if gp.id not in noAddList and "UNCERT" not in gp.id and ".cal.CE" not in gp.id:
                 timeData = gp.getDataset("TIMETAG2").data["NONE"].tolist()
                 dateTag = gp.getDataset("DATETAG").data["NONE"].tolist()
                 timeStamp = []
@@ -415,31 +562,66 @@ class Utilities:
                         dt = Utilities.dateTagToDateTime(dateTag[i])
                         timeStamp.append(Utilities.timeTag2ToDateTime(dt, timei))
                     else:
-                        msg = f"Bad Datetag or Timetag2 found. Eliminating record. {i} DT: {dateTag[i]} TT2: {timei}"
-                        print(msg)
-                        Utilities.writeLogFile(msg)
+                        Utilities.writeLogFileAndPrint(f"Bad Datetag or Timetag2 found. Eliminating record. {i} DT: {dateTag[i]} TT2: {timei}")
                         gp.datasetDeleteRow(i)
 
                 dateTime = gp.addDataset("DATETIME")
                 dateTime.data = timeStamp
         return node
 
-    # Add a data column to each group dataset for DATETIME, as defined by TIMETAG2 and DATETAG
-    # Also screens for nonsense timetags like 0.0 or NaN, and datetags that are not
-    # in the 20th or 21st centuries
+
+    @staticmethod
+    def groupAddDateTime(gp):
+        ''' Add a dataset to one group for DATETIME, as defined by TIMETAG2 and DATETAG
+         Also screens for nonsense timetags like 0.0 or NaN, and datetags that are not
+         in the 20th or 21st centuries '''
+
+        # for gp in node.groups:
+        # print(gp.id)
+        if gp.id != "SOLARTRACKER_STATUS" and "UNCERT" not in gp.id and gp.id != "SATMSG.tdf": # No valid timestamps in STATUS
+            timeData = gp.getDataset("TIMETAG2").data["NONE"].tolist()
+            dateTag = gp.getDataset("DATETAG").data["NONE"].tolist()
+            timeStamp = []
+            for i, timei in enumerate(timeData):
+                # Converts from TT2 (hhmmssmss. UTC) and Datetag (YYYYDOY UTC) to datetime
+                # Filter for aberrant Datetags
+                t = str(int(timei)).zfill(9)
+                h = int(t[:2])
+                m = int(t[2:4])
+                s = int(t[4:6])
+
+                if (str(dateTag[i]).startswith("19") or str(dateTag[i]).startswith("20")) \
+                    and timei != 0.0 and not np.isnan(timei) \
+                        and h < 60 and m < 60 and s < 60:
+
+                    dt = Utilities.dateTagToDateTime(dateTag[i])
+                    timeStamp.append(Utilities.timeTag2ToDateTime(dt, timei))
+                else:
+                    Utilities.writeLogFileAndPrint(f"Bad Datetag or Timetag2 found. Eliminating record. {i} DT: {dateTag[i]} TT2: {timei}")
+                    gp.datasetDeleteRow(i)
+
+            dateTime = gp.addDataset("DATETIME")
+            dateTime.data = timeStamp
+        return gp
+
+
     @staticmethod
     def rootAddDateTimeCol(node):
+        ''' Add a data column to each group dataset for DATETIME, as defined by TIMETAG2 and DATETAG
+            Also screens for nonsense timetags like 0.0 or NaN, and datetags that are not
+            in the 20th or 21st centuries'''
+
         for gp in node.groups:
             if gp.id != "SOLARTRACKER_STATUS" and "UNCERT" not in gp.id and gp.id != "SATMSG.tdf": # No valid timestamps in STATUS
 
                 # Provision for L1AQC carry-over groups. These do not have Datetag or Timetag2
                 #   dataset, but still have DATETAG and TIMETAG2 datasets
-                if not '_L1AQC' in gp.id:
+                if '_L1AQC' not in gp.id:
                     for ds in gp.datasets:
                         # Make sure all datasets have been transcribed to columns
                         gp.datasets[ds].datasetToColumns()
 
-                        if not 'Datetime' in gp.datasets[ds].columns:
+                        if 'Datetime' not in gp.datasets[ds].columns:
                             if 'Timetag2' in gp.datasets[ds].columns:  # changed to ensure the new (irr)radiance groups don't throw errors
                                 timeData = gp.datasets[ds].columns["Timetag2"]
                                 dateTag = gp.datasets[ds].columns["Datetag"]
@@ -455,9 +637,7 @@ class Utilities:
                                         timeStamp.append(Utilities.timeTag2ToDateTime(dt, timei))
                                     else:
                                         gp.datasetDeleteRow(i)
-                                        msg = f"Bad Datetag or Timetag2 found. Eliminating record. {i} DT: {dateTag[i]} TT2: {timei}"
-                                        print(msg)
-                                        Utilities.writeLogFile(msg)
+                                        Utilities.writeLogFileAndPrint(f"Bad Datetag or Timetag2 found. Eliminating record. {i} DT: {dateTag[i]} TT2: {timei}")
                                 gp.datasets[ds].columns["Datetime"] = timeStamp
                                 gp.datasets[ds].columns.move_to_end('Datetime', last=False)
                                 gp.datasets[ds].columnsToDataset()
@@ -487,9 +667,7 @@ class Utilities:
                             timeStamp.append(Utilities.timeTag2ToDateTime(dt, timei))
                         else:
                             gp.datasetDeleteRow(i) # L1AQC datasets all have the same i
-                            msg = f"Bad Datetag or Timetag2 found. Eliminating record. {i} DT: {dateTag[i]} TT2: {timei}"
-                            print(msg)
-                            Utilities.writeLogFile(msg)
+                            Utilities.writeLogFileAndPrint(f"Bad Datetag or Timetag2 found. Eliminating record. {i} DT: {dateTag[i]} TT2: {timei}")
                     # This will be the only dataset structure like a higher level with time/date columns
                     gp.datasets['Timestamp'].columns["Datetime"] = timeStamp
                     gp.datasets['Timestamp'].columns.move_to_end('Datetime', last=False)
@@ -522,9 +700,7 @@ class Utilities:
                         dt = Utilities.dateTagToDateTime(dateTag[i])
                         timeStamp.append(Utilities.timeTag2ToDateTime(dt, timei))
                     else:
-                        msg = f"Bad Datetag or Timetag2 found. Eliminating record. {i} DT: {dateTag[i]} TT2: {timei}"
-                        print(msg)
-                        Utilities.writeLogFile(msg)
+                        Utilities.writeLogFileAndPrint(f"Bad Datetag or Timetag2 found. Eliminating record. {i} DT: {dateTag[i]} TT2: {timei}")
                         gp.datasetDeleteRow(i)
 
                 dateTime = gp.addDataset("DATETIME")
@@ -549,52 +725,39 @@ class Utilities:
                 # del dateTime[i] # I'm fuzzy on why this is necessary; not a pointer?
                 dateTime = gp.getDataset("DATETIME").data
                 total = total - 1
-                msg = f'Out of order timestamp deleted at {i}'
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(f'Out of order timestamp deleted at {i}')
 
                 #In case we went from 2 to 1 element on the first element,
                 if total == 1:
-                    msg = f'************Too few records ({total}) to test for ascending timestamps. Exiting.'
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(f'************Too few records ({total}) to test for ascending timestamps. Exiting.')
                     return False
 
             i = 1
             while i < total:
-
                 if dateTime[i] <= dateTime[i-1]:
-
-                    # BUG?:Same values of consecutive TT2s are shockingly common. Confirmed
-                    #   that 1) they exist from L1A, and 2) sensor data changes while TT2 stays the same
-                    #
+                    if dateTime[i] == dateTime[i-1]:
+                        # BUG?:Same values of consecutive TT2s are shockingly common. Confirmed
+                        #   that 1) they exist from L1A, and 2) sensor data changes while TT2 stays the same
+                        #
+                        Utilities.writeLogFileAndPrint(f'Duplicate row deleted at {i}')
+                    else:
+                        Utilities.writeLogFileAndPrint(f'WARNING: Out of order row deleted at {i}; this should not happen after sortDateTime')
 
                     gp.datasetDeleteRow(i)
                     # del dateTime[i] # I'm fuzzy on why this is necessary; not a pointer?
                     dateTime = gp.getDataset("DATETIME").data
                     total = total - 1
-                    msg = f'Out of order TIMETAG2 row deleted at {i}'
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+
                     continue # goto while test skipping i incrementation. dateTime[i] is now the next value.
                 i += 1
         else:
-            msg = f'************Too few records ({total}) to test for ascending timestamps. Exiting.'
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(f'************Too few records ({total}) to test for ascending timestamps. Exiting.')
             return False
         if (globalTotal - total) > 0:
-            msg = f'Data eliminated for non-increasing timestamps: {100*(globalTotal - total)/globalTotal:3.1f}%'
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(f'Data eliminated for non-increasing timestamps: {100*(globalTotal - total)/globalTotal:3.1f}%')
 
         return True
 
-    # @staticmethod
-    # def epochSecToDateTagTimeTag2(eSec):
-    #     dateTime = datetime.datetime.utcfromtimestamp(eSec)
-    #     year = dateTime.timetuple()[0]
-    #     return
 
     # Checks if a string is a floating point number
     @staticmethod
@@ -627,9 +790,28 @@ class Utilities:
                 #         return True
         return False
 
-    # Check if the list contains strictly increasing values
+    @staticmethod
+    def nan_helper(y):
+        """Helper to handle indices and logical indices of NaNs.
+
+        Input:
+            - y, 1d numpy array with possible NaNs
+        Output:
+            - nans, logical indices of NaNs
+            - index, a function, with signature indices= index(logical_indices),
+            to convert logical indices of NaNs to 'equivalent' indices
+        Example:
+            >>> # linear interpolation of NaNs
+            >>> nans, x= nan_helper(y)
+            >>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
+        """
+
+        return np.isnan(y), lambda z: z.nonzero()[0]
+
+
     @staticmethod
     def isIncreasing(l):
+        ''' Check if the list contains strictly increasing values '''
         return all(x<y for x, y in zip(l, l[1:]))
 
     @staticmethod
@@ -681,15 +863,15 @@ class Utilities:
     @staticmethod
     def darkConvolution(data,avg,std,sigma):
         badIndex = []
-        for i in range(len(data)):
+        for i, dat in enumerate(data):
             if i < 1 or i > len(data)-2:
                 # First and last avg values from convolution are not to be trusted
                 badIndex.append(True)
-            elif np.isnan(data[i]):
+            elif np.isnan(dat):
                 badIndex.append(False)
             else:
                 # Use stationary standard deviation anomaly (from rolling average) detection for dark data
-                if (data[i] > avg[i] + (sigma*std)) or (data[i] < avg[i] - (sigma*std)):
+                if (dat > avg[i] + (sigma*std)) or (dat < avg[i] - (sigma*std)):
                     badIndex.append(True)
                 else:
                     badIndex.append(False)
@@ -698,15 +880,15 @@ class Utilities:
     @staticmethod
     def lightConvolution(data,avg,rolling_std,sigma):
         badIndex = []
-        for i in range(len(data)):
+        for i, dat in enumerate(data):
             if i < 1 or i > len(data)-2:
                 # First and last avg values from convolution are not to be trusted
                 badIndex.append(True)
-            elif np.isnan(data[i]):
+            elif np.isnan(dat):
                 badIndex.append(False)
             else:
                 # Use rolling standard deviation anomaly (from rolling average) detection for dark data
-                if (data[i] > avg[i] + (sigma*rolling_std[i])) or (data[i] < avg[i] - (sigma*rolling_std[i])):
+                if (dat > avg[i] + (sigma*rolling_std[i])) or (dat < avg[i] - (sigma*rolling_std[i])):
                     badIndex.append(True)
                 else:
                     badIndex.append(False)
@@ -716,7 +898,7 @@ class Utilities:
     def deglitchThresholds(band,data,minRad,maxRad,minMaxBand):
 
         badIndex = []
-        for i in range(len(data)):
+        for dat in data:
             badIndex.append(False)
             # ConfigFile setting updated directly from the checkbox in AnomDetection.
             # This insures values of badIndex are false if unthresholded or Min or Max are None
@@ -724,11 +906,11 @@ class Utilities:
                 # Only run on the pre-selected waveband
                 if band == minMaxBand:
                     if minRad or minRad==0: # beware falsy zeros...
-                        if data[i] < minRad:
+                        if dat < minRad:
                             badIndex[-1] = True
 
                     if maxRad or maxRad==0:
-                        if data[i] > maxRad:
+                        if dat > maxRad:
                             badIndex[-1] = True
         return badIndex
 
@@ -738,16 +920,16 @@ class Utilities:
         ''' Wrapper for scipy interp1d that works even if
             values in new_x are outside the range of values in x'''
 
-        ''' NOTE: This will fill missing values at the beginning and end of data record with
-            the nearest actual record. This is fine for integrated datasets, but may be dramatic
-            for some gappy ancillary records of lower temporal resolution.'''
+        # ''' NOTE: This will fill missing values at the beginning and end of data record with
+        #     the nearest actual record. This is fine for integrated datasets, but may be dramatic
+        #     for some gappy ancillary records of lower temporal resolution.'''
         # If the last value to interp to is larger than the last value interp'ed from,
         # then append that higher value onto the values to interp from
         n0 = len(x)-1
         n1 = len(new_x)-1
         if new_x[n1] > x[n0]:
             #print(new_x[n], x[n])
-            # msg = '********** Warning: extrapolating to beyond end of data record ********'
+            # Utilities.writeLogFileAndPrint('********** Warning: extrapolating to beyond end of data record ********'
             # print(msg)
             # Utilities.writeLogFile(msg)
 
@@ -757,7 +939,7 @@ class Utilities:
         # then add that lesser value to the beginning of values to interp from
         if new_x[0] < x[0]:
             #print(new_x[0], x[0])
-            # msg = '********** Warning: extrapolating to before beginning of data record ******'
+            # Utilities.writeLogFileAndPrint('********** Warning: extrapolating to before beginning of data record ******'
             # print(msg)
             # Utilities.writeLogFile(msg)
 
@@ -773,14 +955,14 @@ class Utilities:
         ''' Wrapper for scipy interp1d that works even if
             values in new_x are outside the range of values in x'''
 
-        ''' NOTE: Except for SOLAR_AZ and SZA, which are extrapolated, this will fill missing values at the
-            beginning and end of data record with the nearest actual record. This is fine for integrated
-            datasets, but may be dramatic for some gappy ancillary records of lower temporal resolution.
-            NOTE: SOLAR_AZ and SZA should no longer be int/extrapolated at all, but recalculated in L1B
+        # ''' NOTE: Except for SOLAR_AZ and SZA, which are extrapolated, this will fill missing values at the
+        #     beginning and end of data record with the nearest actual record. This is fine for integrated
+        #     datasets, but may be dramatic for some gappy ancillary records of lower temporal resolution.
+        #     NOTE: SOLAR_AZ and SZA should no longer be int/extrapolated at all, but recalculated in L1B
 
-            NOTE: REL_AZ (sun to sensor) may be negative and should be 90 - 135, so does not require angular
-            interpolation.
-            '''
+        #     NOTE: REL_AZ (sun to sensor) may be negative and should be 90 - 135, so does not require angular
+        #     interpolation.
+        #     '''
 
         # Eliminate NaNs
         whrNan = np.where(np.isnan(y))[0]
@@ -802,7 +984,7 @@ class Utilities:
                 n1 = len(new_x)-1
                 if new_x[n1] > x[n0]:
                     #print(new_x[n], x[n])
-                    # msg = '********** Warning: extrapolating to beyond end of data record ********'
+                    # Utilities.writeLogFileAndPrint('********** Warning: extrapolating to beyond end of data record ********'
                     # print(msg)
                     # Utilities.writeLogFile(msg)
 
@@ -813,7 +995,7 @@ class Utilities:
                 # then add that lesser value to the beginning of values to interp from
                 if new_x[0] < x[0]:
                     #print(new_x[0], x[0])
-                    # msg = '********** Warning: extrapolating to before beginning of data record ******'
+                    # Utilities.writeLogFileAndPrint('********** Warning: extrapolating to before beginning of data record ******'
                     # print(msg)
                     # Utilities.writeLogFile(msg)
 
@@ -842,8 +1024,8 @@ class Utilities:
         spl = splrep(x, y)
         new_y = splev(new_x, spl)
 
-        for i in range(len(new_y)):
-            if np.isnan(new_y[i]):
+        for newy in new_y:
+            if np.isnan(newy):
                 print("NaN")
 
         return new_y
@@ -866,8 +1048,18 @@ class Utilities:
             newYList.append(fillValue)
 
         for value in yUnique:
+            # NOTE: If only one timestamp is found, it is highly unlikely to pass the test below.
             minX = min(x[y==value])
             maxX = max(x[y==value])
+
+            # # Test conversion reversal
+            # datetime_object = datetime.fromtimestamp(maxX)
+
+            if minX == maxX:
+                # NOTE: Workaround: buffer the start and stop times of the station by some amount of time
+                # Unix time: Number of seconds that have elapsed since January 1, 1970, at 00:00:00 Coordinated Universal Time (UTC)
+                minX -= 120
+                maxX += 120
 
             for i, newX in enumerate(newXList):
                 if (newX >= minX) and (newX <= maxX):
@@ -875,16 +1067,51 @@ class Utilities:
 
         return newYList
 
+    @staticmethod
+    def fixDarkTimes(darkGroup,lightGroup):
+        ''' Find the nearest timestamp in the light data to each dark measurements (Sea-Bird) '''
+
+        darkDatetime = darkGroup.datasets["DATETIME"].data
+        lightDatetime = lightGroup.datasets["DATETIME"].data
+
+        dateTagNew = darkGroup.addDataset('DATETAG_ADJUSTED')
+        timeTagNew = darkGroup.addDataset('TIMETAG2_ADJUSTED')
+        dateTimeNew = darkGroup.addDataset('DATETIME_ADJUSTED')
+
+        is_sorted = lambda x: np.all(x[:-1] <= x[1:])
+        if is_sorted(lightDatetime) and is_sorted(darkDatetime):
+            iLight = np.searchsorted(lightDatetime, darkDatetime, side="left")
+            iLight[iLight == len(lightDatetime)] = len(lightDatetime) - 1  # Edge case
+        else:
+            iLight = np.empty(len(darkDatetime), dtype=int)
+            lightDatetimeArray = np.asarray(lightDatetime)
+            for i, darkTime in enumerate(darkDatetime):
+                iLight[i] = (np.abs(lightDatetimeArray - darkTime)).argmin()
+
+        dateTagNew.data = lightGroup.datasets['DATETAG'].data[iLight]
+        timeTagNew.data = lightGroup.datasets['TIMETAG2'].data[iLight]
+        dateTimeNew.data = np.array(lightGroup.datasets['DATETIME'].data)[iLight]
+
+        return darkGroup
+
 
     @staticmethod
     def filterData(group, badTimes, level = None):
         ''' Delete flagged records. Level is only specified to point to the timestamp.
             All data in the group (including satellite sensors) will be deleted.
-            Called by both ProcessL1bqc and ProcessL2.'''
+            Called by both ProcessL1bqc and ProcessL2. 
+            
+            filterData for L1AQC is contained within ProcessL1aqc.py'''
 
-        msg = f'Remove {group.id} Data'
-        print(msg)
-        Utilities.writeLogFile(msg)
+        # NOTE: This is still very slow on long files with many badTimes, despite badTimes being filtered for
+        #   unique pairs.
+
+        Utilities.writeLogFileAndPrint(f'Remove {group.id} Data')
+        # internal switch to trigger the reset of CAL & BACK
+        # dataset that we have to delete to avoid conflict during filtering
+        do_reset = False
+        timeStamp = None
+        raw_cal, raw_back, raw_back_att, raw_cal_att = None,None,None,None,
 
         if level != 'L1AQC':
             if group.id == "ANCILLARY":
@@ -893,17 +1120,24 @@ class Utilities:
                 timeStamp = group.getDataset("ES").data["Datetime"]
             if group.id == "RADIANCE":
                 timeStamp = group.getDataset("LI").data["Datetime"]
+            if group.id == "SIXS_MODEL":
+                timeStamp = group.getDataset("solar_zenith").data["Datetime"]
         else:
-             timeStamp = group.getDataset("Timestamp").data["Datetime"]
-             # TRIOS: copy CAL & BACK before filetering
-             if ConfigFile.settings['SensorType'].lower() == 'trios':
-                 raw_cal  = group.getDataset("CAL_"+group.id[0:2]).data
-                 raw_back = group.getDataset("BACK_"+group.id[0:2]).data
+            timeStamp = group.getDataset("Timestamp").data["Datetime"]
+            # TRIOS: copy CAL & BACK before filetering, and delete them
+            # to avoid conflict when filtering more row than 255
+            if ConfigFile.settings['SensorType'].lower() == 'trios' or ConfigFile.settings['SensorType'].lower() == "sorad":
+                do_reset = True
+                raw_cal  = group.getDataset("CAL_"+group.id[0:2]).data
+                raw_back = group.getDataset("BACK_"+group.id[0:2]).data
+                raw_cal_att  = group.getDataset("CAL_"+group.id[0:2]).attributes
+                raw_back_att = group.getDataset("BACK_"+group.id[0:2]).attributes
+                del group.datasets['CAL_'+group.id[0:2]]
+                del group.datasets['BACK_'+group.id[0:2]]
+
 
         startLength = len(timeStamp)
-        msg = f'   Length of dataset prior to removal {startLength} long'
-        print(msg)
-        Utilities.writeLogFile(msg)
+        Utilities.writeLogFileAndPrint(f'   Length of dataset prior to removal {startLength} long')
 
         # Delete the records in badTime ranges from each dataset in the group
         finalCount = 0
@@ -913,7 +1147,7 @@ class Utilities:
             startLength = len(timeStamp)
             newTimeStamp = []
 
-            # msg = f'Eliminate data between: {dateTime}'
+            # Utilities.writeLogFileAndPrint(f'Eliminate data between: {dateTime}'
             # print(msg)
             # Utilities.writeLogFile(msg)
 
@@ -927,40 +1161,42 @@ class Utilities:
                         try:
                             rowsToDelete.append(i)
                             finalCount += 1
-                        except:
+                        except Exception:
                             print('error')
                     else:
                         newTimeStamp.append(timeStamp[i])
                 group.datasetDeleteRow(rowsToDelete)
             else:
-                msg = 'Data group is empty. Continuing.'
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint('Data group is empty. Continuing.')
                 break
             timeStamp = newTimeStamp.copy()
 
-        # TRIOS: reset CAL and BACK as before filtering
-        if ConfigFile.settings['SensorType'].lower() == 'trios':
+        if ConfigFile.settings['SensorType'].lower() == 'trios' or ConfigFile.settings['SensorType'].lower() == "sorad":
+            # TRIOS: reset CAL and BACK as before filtering
+            if do_reset:
+                group.addDataset("CAL_"+group.id[0:2])
+                group.datasets["CAL_"+group.id[0:2]].data = raw_cal
+                group.datasets["CAL_"+group.id[0:2]].attributes = raw_cal_att
+                group.addDataset("BACK_"+group.id[0:2])
+                group.datasets["BACK_"+group.id[0:2]].data = raw_back
+                group.datasets["BACK_"+group.id[0:2]].attributes = raw_back_att
+
             for ds in group.datasets:
-                if "BACK" in ds:
-                    group.datasets[ds].data = raw_back
-                if "CAL" in ds:
-                    group.datasets[ds].data = raw_cal
                 group.datasets[ds].datasetToColumns()
         else:
             for ds in group.datasets:
                 group.datasets[ds].datasetToColumns()
 
-        msg = f'   Length of dataset after removal {originalLength-finalCount} long: {round(100*finalCount/originalLength)}% removed'
-        print(msg)
-        Utilities.writeLogFile(msg)
+        Utilities.writeLogFileAndPrint(f'   Length of dataset after removal {originalLength-finalCount} long: {(100*finalCount/originalLength):.1f}% removed')
         return finalCount/originalLength
 
 
     @staticmethod
     def plotRadiometry(root, filename, rType, plotDelta = False):
+        # refresh figure to ensure debug plots do not affect Rrs plotting
+        # plt.figure()
+        plt.figure(1, figsize=(8,6))
 
-        dirPath = os.getcwd()
         outDir = MainConfig.settings["outDir"]
 
         if os.path.abspath(outDir) == os.path.join(dirPath,'Data'):
@@ -974,15 +1210,21 @@ class Utilities:
 
         # dataDelta in this case can be STD (for TriOS Factory) or UNC (otherwise)
         dataDelta = None
-        ''' Note: If only one spectrum is left in a given ensemble, STD will
-        be zero for Es, Li, and Lt.'''
-        if ConfigFile.settings['SensorType'].lower() == 'trios' and ConfigFile.settings['bL1bCal'] == 1:
+        # Note: If only one spectrum is left in a given ensemble, STD will
+        #be zero for Es, Li, and Lt.'''
+        if  (ConfigFile.settings['SensorType'].lower() == 'trios' or \
+             ConfigFile.settings['SensorType'].lower() == 'dalec' or\
+            ConfigFile.settings['SensorType'].lower() == 'sorad') and ConfigFile.settings['fL1bCal'] == 1:
             suffix = 'sd'
         else:
             suffix = 'unc'
 
         # In the case of reflectances, only use _unc. There are no _std, because reflectances are calculated
         # from the average Lw and Es values within the ensembles
+        Data, lwData, Data_MODISA, Data_MODIST = None, None, None, None
+        Data_Sentinel3A, Data_Sentinel3B, Data_VIIRSJ,Data_VIIRSN = None, None, None, None
+        dataDelta, dataDelta_MODISA, dataDelta_MODIST, dataDelta_Sentinel3A = None, None, None, None
+        dataDelta_Sentinel3B, dataDelta_VIIRSJ, dataDelta_VIIRSN, units = None, None, None, None
         if rType=='Rrs' or rType=='nLw':
             print('Plotting Rrs or nLw')
             group = root.getGroup("REFLECTANCE")
@@ -1023,7 +1265,7 @@ class Utilities:
                     dataDelta_Sentinel3B = group.getDataset(f'{rType}_Sentinel3B_unc')
 
         else:
-            ''' Could include satellite convolved (ir)radiances in the future '''
+            # Could include satellite convolved (ir)radiances in the future '''
             if rType=='ES':
                 print('Plotting Es')
                 group = root.getGroup("IRRADIANCE")
@@ -1041,10 +1283,10 @@ class Utilities:
                 group = root.getGroup("RADIANCE")
                 units = group.attributes['LT_UNITS']
                 Data = group.getDataset(f'{rType}_HYPER')
-                lwData = group.getDataset(f'LW_HYPER')
+                lwData = group.getDataset('LW_HYPER')
                 if plotDelta:
                     # lwDataDelta = group.getDataset(f'LW_HYPER_{suffix}')
-                    lwDataDelta = group.getDataset(f'LW_HYPER_unc').data.copy() # Lw does not have STD
+                    lwDataDelta = group.getDataset('LW_HYPER_unc').data.copy() # Lw does not have STD
                     # For the purpose of plotting, use zeros for NaN uncertainties
                     lwDataDelta = Utilities.datasetNan2Zero(lwDataDelta)
 
@@ -1139,7 +1381,7 @@ class Utilities:
         cmap = cm.get_cmap("jet")
         color=iter(cmap(np.linspace(0,1,total)))
 
-        plt.figure(1, figsize=(8,6))
+        # plt.figure(1, figsize=(8,6))
         for i in range(total):
             # Hyperspectral
             y = []
@@ -1207,7 +1449,7 @@ class Utilities:
             if rType == 'LI' and maxRad > 20:
                 maxRad = 20
             if rType == 'LT' and maxRad > 2:
-                maxRad = 2
+                maxRad = 2.5
             if min(y) < minRad:
                 minRad = min(y)-0.1*min(y)
             if rType == 'LI':
@@ -1340,112 +1582,10 @@ class Utilities:
         # plt.show() # --> QCoreApplication::exec: The event loop is already running
 
         # Save the plot
-        filebasename = filename.split('_')
-        fp = os.path.join(plotDir, '_'.join(filebasename[0:-1]) + '_' + rType + '.png')
-        plt.savefig(fp)
-        plt.close() # This prevents displaying the plot on screen with certain IDEs
-
-    @staticmethod
-    def plotRadiometryL1D(root, filename, rType):
-
-        dirPath = os.getcwd()
-        outDir = MainConfig.settings["outDir"]
-        # If default output path (HyperInSPACE/Data) is used, choose the root HyperInSPACE path,
-        # and build on that (HyperInSPACE/Plots/etc...)
-        if os.path.abspath(outDir) == os.path.join(dirPath,'Data'):
-            outDir = dirPath
-
-        # Otherwise, put Plots in the chosen output directory from Main
-        plotDir = os.path.join(outDir,'Plots','L1D')
-
-        if not os.path.exists(plotDir):
-            os.makedirs(plotDir)
-
-        plotRange = [305, 1140]
-
-        if rType=='ES':
-            print('Plotting Es')
-            group = root.getGroup(rType)
-            Data = group.getDataset(rType)
-
-        if rType=='LI':
-            print('Plotting Li')
-            group = root.getGroup(rType)
-            Data = group.getDataset(rType)
-
-        if rType=='LT':
-            print('Plotting Lt')
-            group = root.getGroup(rType)
-            Data = group.getDataset(rType)
-
-        font = {'family': 'serif',
-            'color':  'darkred',
-            'weight': 'normal',
-            'size': 16,
-            }
-
-        # Hyperspectral
-        x = []
-        wave = []
-
-        # For each waveband
-        for k in Data.data.dtype.names:
-            if Utilities.isFloat(k):
-                if float(k)>=plotRange[0] and float(k)<=plotRange[1]: # also crops off date and time
-                    x.append(k)
-                    wave.append(float(k))
-
-        total = Data.data.shape[0]
-        maxRad = 0
-        minRad = 0
-        cmap = cm.get_cmap("jet")
-        color=iter(cmap(np.linspace(0,1,total)))
-
-        plt.figure(1, figsize=(8,6))
-        for i in range(total):
-            # Hyperspectral
-            y = []
-            for k in x:
-                y.append(Data.data[k][i])
-
-            c=next(color)
-            if max(y) > maxRad:
-                maxRad = max(y)+0.1*max(y)
-            if rType == 'LI' and maxRad > 20:
-                maxRad = 20
-            if rType == 'LT' and maxRad > 10:
-                maxRad = 10
-            if min(y) < minRad:
-                minRad = min(y)-0.1*min(y)
-            if rType == 'LI':
-                minRad = 0
-            if rType == 'LT':
-                minRad = 0
-            if rType == 'ES':
-                minRad = 0
-
-            # Plot the Hyperspectral spectrum
-            plt.plot(wave, y, c=c, zorder=-1)
-
-        axes = plt.gca()
-        axes.set_title(filename, fontdict=font)
-        # axes.set_xlim([390, 800])
-        axes.set_ylim([minRad, maxRad])
-
-        plt.xlabel('wavelength (nm)', fontdict=font)
-        plt.ylabel(rType, fontdict=font)
-
-        # Tweak spacing to prevent clipping of labels
-        plt.subplots_adjust(left=0.15)
-        plt.subplots_adjust(bottom=0.15)
-
-        axes.grid()
-
-        # plt.show() # --> QCoreApplication::exec: The event loop is already running
-
-        # Save the plot
-        filebasename = filename.split('_')
-        fp = os.path.join(plotDir, '_'.join(filebasename[0:-1]) + '_' + rType + '.png')
+        # filebasename = filename.split('_')
+        # fp = os.path.join(plotDir, '_'.join(filebasename[0:-1]) + '_' + rType + '.png')
+        filebasename = filename.split('.hdf')
+        fp = os.path.join(plotDir, filebasename[0] + '_' + rType + '.png')
         plt.savefig(fp)
         plt.close() # This prevents displaying the plot on screen with certain IDEs
 
@@ -1454,7 +1594,6 @@ class Utilities:
     def plotTimeInterp(xData, xTimer, newXData, yTimer, instr, fp):
         ''' Plot results of L1B time interpolation '''
 
-        dirPath = os.getcwd()
         outDir = MainConfig.settings["outDir"]
         # If default output path (HyperInSPACE/Data) is used, choose the root HyperInSPACE path,
         # and build on that (HyperInSPACE/Plots/etc...)
@@ -1475,7 +1614,7 @@ class Utilities:
         dfy['x'] = pd.to_datetime(dfy['x'].astype(str))
 
         [_,fileName] = os.path.split(fp)
-        fileBaseName,_ = fileName.split('.')
+        fileBaseName,_ = fileName.rsplit('.',1)
         register_matplotlib_converters()
 
         font = {'family': 'serif',
@@ -1484,11 +1623,14 @@ class Utilities:
             'size': 16,
             }
 
+        progressBar = None
         # Steps in wavebands used for plots
         # This happens prior to waveband interpolation, so each interval is ~3.3 nm
         step = ConfigFile.settings['fL1bPlotInterval']
 
-        if instr == 'ES' or instr == 'LI' or instr == 'LT':
+        intervalList = ['ES','LI','LT','sixS_irradiance','direct_ratio','diffuse_ratio']
+        # if instr == 'ES' or instr == 'LI' or instr == 'LT':
+        if instr in intervalList:
             l = round((len(xData.data.dtype.names)-3)/step) # skip date and time and datetime
             index = l
         else:
@@ -1564,7 +1706,6 @@ class Utilities:
             import logging
             logging.getLogger('matplotlib.font_manager').disabled = True
 
-            dirPath = os.getcwd()
             outDir = MainConfig.settings["outDir"]
             # If default output path (HyperInSPACE/Data) is used, choose the root HyperInSPACE path,
             # and build on that (HyperInSPACE/Plots/etc...)
@@ -1601,7 +1742,8 @@ class Utilities:
             # cmap = cm.get_cmap("jet")
             # color=iter(cmap(np.linspace(0,1,total)))
             print('Creating plots...')
-            plt.figure(1, figsize=(10,8))
+            # plt.figure(1, figsize=(10,8))
+            plt.figure(figsize=(10,8))
 
         for timei in range(total):
             y = []
@@ -1676,7 +1818,6 @@ class Utilities:
     @staticmethod
     def plotIOPs(root, filename, algorithm, iopType, plotDelta = False):
 
-        dirPath = os.getcwd()
         outDir = MainConfig.settings["outDir"]
         # If default output path (HyperInSPACE/Data) is used, choose the root HyperInSPACE path,
         # and build on that (HyperInSPACE/Plots/etc...)
@@ -1765,7 +1906,7 @@ class Utilities:
                 colorGOCAD = iter(cmap(np.linspace(0,1,totalGOCAD)))
 
                 # Sg
-                sgDataGOCAD = group.getDataset(f'gocad_Sg')
+                sgDataGOCAD = group.getDataset('gocad_Sg')
 
                 sgGOCAD = []
                 waveSgGOCAD = []
@@ -1777,7 +1918,7 @@ class Utilities:
                             waveSgGOCAD.append(float(k))
 
                 # DOC
-                docDataGOCAD = group.getDataset(f'gocad_doc')
+                docDataGOCAD = group.getDataset('gocad_doc')
 
         maxIOP = 0
         minIOP = 0
@@ -1910,7 +2051,7 @@ class Utilities:
     @staticmethod
     def readAnomAnalFile(filePath):
         paramDict = {}
-        with open(filePath, newline='') as csvfile:
+        with open(filePath, newline='', encoding="utf-8") as csvfile:
             paramreader = csv.DictReader(csvfile)
             for row in paramreader:
 
@@ -2015,18 +2156,16 @@ class Utilities:
 
     @staticmethod
     def saveDeglitchPlots(fileName,timeSeries,dateTime,sensorType,lightDark,windowSize,sigma,badIndex,badIndex2,badIndex3):#,\
-        import matplotlib.dates as mdates
         #Plot results
 
         # # Set up datetime axis objects
         # #   https://stackoverflow.com/questions/49046931/how-can-i-use-dateaxisitem-of-pyqtgraph
         # class TimeAxisItem(pg.AxisItem):
         #     def tickStrings(self, values, scale, spacing):
-        #         return [datetime.datetime.fromtimestamp(value, pytz.timezone("UTC")) for value in values]
+        #         return [datetime.fromtimestamp(value, pytz.timezone("UTC")) for value in values]
 
         # date_axis_Dark = TimeAxisItem(orientation='bottom')
         # date_axis_Light = TimeAxisItem(orientation='bottom')
-        dirPath = os.getcwd()
         outDir = MainConfig.settings["outDir"]
         # If default output path (HyperInSPACE/Data) is used, choose the root HyperInSPACE path,
         # and build on that (HyperInSPACE/Plots/etc...)
@@ -2052,7 +2191,7 @@ class Utilities:
         avg = Utilities.movingAverage(radiometry1D, windowSize).tolist()
 
         # try:
-        text_xlabel="Time Series"
+        # text_xlabel="Time Series"
         text_ylabel=f'{sensorType}({waveBand}) {lightDark}'
         # plt.figure(figsize=(15, 8))
         fig, ax = plt.subplots(1)
@@ -2107,100 +2246,166 @@ class Utilities:
             dateTime.append(Utilities.timeTag2ToDateTime(dt,timeTags[i]))
 
         return dateTime
+
+
     @staticmethod
-    def generateTempCoeffs(InternalTemp, uncDS, ambTemp, sensor):
+    def generateTempCoeffs(workingTemp, sigmaT, thermalCoeffDS, sensor):
+        # workingTemp can come from 1) internal thermistor, 2) caps-on dark, 3) airTemp + 2.5 C
+        #   Option (2) is only for airTemp +2.5C and COD temp both > 30 C, otherwise (1) or (3).
+        #   See Utilities.UncTempCorrection
 
         # Get the reference temperature
-        if 'REFERENCE_TEMP' in uncDS.attributes:
-            refTemp = float(uncDS.attributes["REFERENCE_TEMP"])
+        if 'AMBIENT_TEMP' in thermalCoeffDS.attributes:
+            # This is temperature of the sensor during calibration from the _THERMAL_ file
+            #   REFERENCE_TEMP is the AMBIENT_TEMP during derivation of thermal coefficients, and not relevant here.
+            calTemp = float(thermalCoeffDS.attributes["AMBIENT_TEMP"])
+        elif 'REFERENCE_TEMP' in thermalCoeffDS.attributes:
+            # This is a fallback when class-based thermal coefficients are used and AMBIENT is not provided
+            calTemp = float(thermalCoeffDS.attributes["REFERENCE_TEMP"])
         else:
-            print("reference temperature not found")
-            print("aborting ...")
-            return None
+            Utilities.writeLogFileAndPrint("Reference temperature not found. Aborting ...")
+            return False
 
         # Get thermal coefficient from characterization
-        uncDS.datasetToColumns()
-        therm_coeff = uncDS.data[list(uncDS.columns.keys())[2]]
-        therm_unc = uncDS.data[list(uncDS.columns.keys())[3]]
+        thermalCoeffDS.datasetToColumns()
+        therm_coeff = thermalCoeffDS.data[list(thermalCoeffDS.columns.keys())[2]]
+        therm_unc = thermalCoeffDS.data[list(thermalCoeffDS.columns.keys())[3]]     # NOTE: See below. Is this sigmaC?
         ThermCorr = []
         ThermUnc = []
 
-        # Seabird case
-        if ConfigFile.settings['SensorType'].lower() == "seabird":
-            for i in range(len(therm_coeff)):
-                try:
-                    ThermCorr.append(1 + (therm_coeff[i] * (InternalTemp - refTemp)))
-                    if ConfigFile.settings["bL1bCal"] == 3:
-                        ThermUnc.append(therm_unc[i] / 2)  # div by 2 because uncertainty is k=2
-                    else:
-                        ThermUnc.append(np.abs(therm_coeff[i] * (InternalTemp - refTemp)))
-                except IndexError:
-                    ThermCorr.append(1.0)
-                    ThermUnc.append(0)
+        dT = workingTemp - calTemp
+        if sigmaT is None:
+            sigmaT = dT             # NOTE: Confirm this
+        for i, therm_coeffi in enumerate(therm_coeff):
+            try:
+                # Thermal Correction:
+                ThermCorr.append(1 + (therm_coeffi * dT))
 
-        # TRIOS case: no temperature available
-        elif ConfigFile.settings['SensorType'].lower() == "trios":
-            # For Trios the radiometer InternalTemp is a place holder filled with 0.
-            # We use ambiant_temp+2.5° instead to estimate internal temp
-            for i in range(len(therm_coeff)):
-                try:
-                    ThermCorr.append(1 + (therm_coeff[i] * (InternalTemp+ambTemp+2.5 - refTemp)))
-                    if ConfigFile.settings["bL1bCal"] == 3:
-                        ThermUnc.append(therm_unc[i] / 2)
-                        # uncertainty is k=2 from char file
-                    else:
-                        ThermUnc.append(np.abs(therm_coeff[i] * (InternalTemp+ambTemp+2.5 - refTemp)))
-                except IndexError:
-                    ThermCorr.append(1.0)
-                    ThermUnc.append(0)
+                # Thermal Correction Uncertainty:
+                # Zibordi and Talone, in prep. 2025
+                # 𝑢𝑟(λ, ∆𝑇, DN) = [ε𝑐(λ, ∆𝑇)^2 + ε𝑇(λ, DN)^2]1/2
+                # 𝜀𝑐(𝜆, Δ𝑇) = Δ𝑇 × 𝜎𝑐(𝜆)
+                # 𝜀𝑇(𝜆, DN) = 𝑐(λ ) × 𝜎𝑇(DN)
+                # σc(λ)=0.03×10-2 (°C)-1 in the 400-800 nm spectral range for the 10-40°C interval
+                # σc(λ)= therm_unc from THERMAL file NOTE: Confirm this.
+                # ∆𝑇 = workingT - calTemp
+                sigmaC = therm_unc[i]               # NOTE: Confirm this
+                # sigmaC = 0.0003 # See above
+                epsC = dT*sigmaC
+                epsT = therm_coeffi*sigmaT
+                ur = np.sqrt(epsC**2 + epsT**2)
+
+                if ConfigFile.settings["fL1bCal"] == 3:
+                    # ThermUnc.append(np.abs(therm_unc[i] * (workingTemp - calTemp)) / 2)
+                    # div by 2 because uncertainty is k=2
+                    ThermUnc.append(ur / 2)         # NOTE: Confirm this
+                else:
+                    ThermUnc.append(ur)
+            except IndexError as err:
+                print(f'{err} in Utilities.generateTempCoeffs')
+                ThermCorr.append(1.0)
+                ThermUnc.append(0)
 
         # Change thermal general coefficients into ones specific for processed data
-        uncDS.columns[f"{sensor}_TEMPERATURE_COEFFICIENTS"] = ThermCorr
-        uncDS.columns[f"{sensor}_TEMPERATURE_UNCERTAINTIES"] = ThermUnc
-        uncDS.columnsToDataset()
+        thermalCoeffDS.columns[f"{sensor}_TEMPERATURE_COEFFICIENTS"] = ThermCorr
+        thermalCoeffDS.columns[f"{sensor}_TEMPERATURE_UNCERTAINTIES"] = ThermUnc
+        thermalCoeffDS.columnsToDataset()
 
         return True
 
     @staticmethod
     def UncTempCorrection(node):
+        ''' Called by ProcessL1b.read_unc_coefficient_factory, .read_unc_coefficient_class, .read_unc_coefficient_frm 
+            Thermal coefficients devised for each radiometer class are base on "Working Temperature" defined as:
+                TriOS G1: ambient temperature in the thermal chamber external to the radiometer in thermal equilibrium. 
+                Sea-Bird: internal thermistor temperature.'''
         unc_grp = node.getGroup("RAW_UNCERTAINTIES")
-        sensorID = Utilities.get_sensor_dict(node)
+        # sensorID = Utilities.get_sensor_dict(node)
         # inv_ID = {v: k for k, v in sensorID.items()}
         for sensor in ["LI", "LT", "ES"]:
             TempCoeffDS = unc_grp.getDataset(sensor+"_TEMPDATA_CAL")
 
-            ### Seabird
-            if ConfigFile.settings['SensorType'].lower() == "seabird":
-                if "TEMP" in node.getGroup(f'{sensor}_LIGHT').datasets:
-                    TempDS = node.getGroup(f'{sensor}_LIGHT').getDataset("TEMP")
-                elif "SPECTEMP" in node.getGroup(f'{sensor}_LIGHT').datasets:
-                    TempDS = node.getGroup(f'{sensor}_LIGHT').getDataset("SPECTEMP")
-                else:
-                    msg = "Thermal dataset not found"
-                    print(msg)
-                # internal temperature is the mean of all replicate
-                internalTemp = np.mean(np.array(TempDS.data.tolist()))
-                # ambiant temp is not needed for seabird as internal temp is measured, set to 0
-                ambTemp = 0
-                if not Utilities.generateTempCoeffs(internalTemp, TempCoeffDS, ambTemp, sensor):
-                    msg = "Failed to generate Thermal Coefficients"
-                    print(msg)
+            meanSPECTEMP,meanAIRTEMP,meanCAPSONTEMP = None,None,None
+            airTempMargin = 2.5 # Average estimate of margin for working temperature (G1) above air temp
+            # SPECTEMP should be present for all platform/sensors (SeaBird,TriOS,DALEC),
+            #   but only populated with non-zeroes where an internal thermistor is available.
 
-            ### Trios
-            elif ConfigFile.settings['SensorType'].lower() == "trios":
-                # No internal temperature available for Trios, set to 0.
-                internalTemp = 0
-                # Ambiant temperature is needed to estimate internal temperature instead.
-                RadcalDS = unc_grp.getDataset(sensor+"_RADCAL_CAL")
-                if 'AMBIENT_TEMP' in RadcalDS.attributes:
-                    ambTemp = float(RadcalDS.attributes["AMBIENT_TEMP"])
+            # CAPSONTEMP only available for TriOS.
+            sigmaT = None
+            if ConfigFile.settings['SensorType'].lower() == "seabird" or \
+                ConfigFile.settings['SensorType'].lower() == "dalec":
+                sensorGroup = node.getGroup(f'{sensor}_LIGHT')
+                if "SPECTEMP" in sensorGroup.datasets:
+                    specTEMP = sensorGroup.getDataset("SPECTEMP")
+                    meanSPECTEMP = np.mean(np.array(specTEMP.data.tolist()))
                 else:
-                    print("Ambient temperature not found")
-                    print("Aborting ...")
-                    return None
-                if not Utilities.generateTempCoeffs(internalTemp, TempCoeffDS, ambTemp, sensor):
-                    msg = "Failed to generate Thermal Coefficients"
-                    print(msg)
+                    Utilities.writeLogFileAndPrint("Internal temperature dataset not found")
+                    return False
+                # if "CAPSONTEMP" in sensorGroup.datasets:
+                #     capsonTEMP = sensorGroup.getDataset("CAPSONTEMP")
+                #     capsonTEMP.datasetToColumns()
+                #     meanCAPSONTEMP = capsonTEMP.columns['T'][0]
+                # # else:
+                # #     Utilities.writeLogFileAndPrint("Caps-on temperature dataset not found")
+            elif ConfigFile.settings['SensorType'].lower() == "trios":
+                sensorGroup = node.getGroup(f'{sensor}')
+                if "SPECTEMP" in sensorGroup.datasets:
+                    # NOTE: Need to distinguish G2 at some point
+                    specTEMP = sensorGroup.getDataset("SPECTEMP")
+                    meanSPECTEMP = np.mean(np.array(specTEMP.data.tolist()))
+                else:
+                    Utilities.writeLogFileAndPrint("Internal temperature dataset not found")
+                if "CAPSONTEMP" in sensorGroup.datasets:
+                    capsonTEMP = sensorGroup.getDataset("CAPSONTEMP")
+                    capsonTEMP.datasetToColumns()
+                    meanCAPSONTEMP = capsonTEMP.columns['T'][0]
+                    # NOTE: This is used for unc. in thermal corr even if COD temp is not used due to 30 deg. C threshold
+                    # NOTE: Confirm this.
+                    sigmaT = capsonTEMP.columns['sigmaT'][0]
+                if "AIRTEMP" in node.getGroup('ANCILLARY_METADATA').datasets:
+                    airTEMP = node.getGroup('ANCILLARY_METADATA').getDataset("AIRTEMP").columns['AIRTEMP']
+                    meanAIRTEMP = np.mean(np.array(airTEMP))
+                else:
+                    Utilities.writeLogFileAndPrint("Air temperature dataset not found")
+
+            # Now make the decision which value to use as the internal working temperature of the sensor.
+            # NOTE: Currently, only TriOS L1A processing matches dark files to extract CAPSONTEMP
+            if meanSPECTEMP != 0.0:
+                # NOTE: G2 thermistor acquisition is still under development
+                Utilities.writeLogFileAndPrint(f"{sensor}: Using internal thermistor for sensor working temperature")
+                workingTemp = meanSPECTEMP     # SeaBird, DALEC, and TriOS G2 should always follow this path
+                workingTempSource = 'InternalThermistor'
+            elif meanCAPSONTEMP and ConfigFile.settings['fL1bThermal'] == 3:
+                if meanAIRTEMP:
+                    if (meanAIRTEMP + airTempMargin < 30) and (meanCAPSONTEMP < 30): # Both conditions must be met
+                        Utilities.writeLogFileAndPrint(f"{sensor}: meanAIRTEMP + airTempMargin < 30. Using air temp with margin for sensor working temperature")
+                        workingTemp = meanAIRTEMP + airTempMargin
+                        workingTempSource = 'AirTemp+2.5C'
+                    else:
+                        Utilities.writeLogFileAndPrint(f"{sensor}: (meanAIRTEMP + airTempMargin) and/or COD >= 30. Using caps-on dark algorithm for sensor working temperature")
+                        workingTemp = meanCAPSONTEMP
+                        workingTempSource = 'CapsOnDark'
+                else:
+                    # Emergency fallback where no other source is available. Least accurate.
+                    Utilities.writeLogFileAndPrint(f"{sensor}:WARNING: No air temperature provided. Caps-on dark temp used despite temps < 30 C.")
+                    workingTemp = meanCAPSONTEMP
+                    workingTempSource = 'CapsOnDark'
+            else:
+                if meanAIRTEMP:
+                    Utilities.writeLogFileAndPrint(f"{sensor}:Using air temp with margin for sensor working temperature")
+                    workingTemp = meanAIRTEMP + airTempMargin
+                    workingTempSource = 'AirTemp+2.5C'
+                else:
+                    # Considering fallbacks for air temperature, this should never be reached.
+                    Utilities.writeLogFileAndPrint(f"{sensor}:WARNING: No source of information available for sensor working temperature!")
+                    return False
+
+            # add workingTempSource to attributes
+            sensorGroup.attributes['WorkingTempSource'] = workingTempSource
+            sensorGroup.attributes['WorkingTemp'] = f'{workingTemp:.1f}'
+
+            if not Utilities.generateTempCoeffs(workingTemp, sigmaT, TempCoeffDS, sensor):
+                Utilities.writeLogFileAndPrint("Failed to generate Thermal Coefficients")
 
         return True
 
@@ -2228,7 +2433,7 @@ class Utilities:
                     sensorID[sensorCode] = "LT"
 
             # elif "IDDevice" in grp.attributes:
-            elif ConfigFile.settings['SensorType'].lower() == 'trios':
+            elif ConfigFile.settings['SensorType'].lower() == 'trios' or  ConfigFile.settings['SensorType'].lower() == 'sorad':
                 if "ES" in grp.datasets:
                     sensorID[grp.attributes["IDDevice"][4:8]] = "ES"
                 if "LI" in grp.datasets:
@@ -2237,7 +2442,6 @@ class Utilities:
                     sensorID[grp.attributes["IDDevice"][4:8]] = "LT"
 
         return sensorID
-
 
 
     @staticmethod
@@ -2304,52 +2508,6 @@ class Utilities:
         return True
 
 
-    # @staticmethod
-    # def RenameUncertainties_Class(node):
-    #     """
-    #     Rename unc dataset from generic class-based id to sensor type
-    #     """
-    #     unc_group = node.getGroup("RAW_UNCERTAINTIES")
-    #     sensorID = Utilities.get_sensor_dict(node) # should result in OD{[Instr#:ES, Instr#:LI, Instr#:LT]}
-    #     print("sensors type", sensorID)
-    #     names = [i for i in unc_group.datasets]  # get names in advance, mutation of iteration object breaks for loop
-    #     for name in names:
-    #         ds = unc_group.getDataset(name)
-
-    #         if "_RADIANCE_" in name:
-    #             # Class-based radiance coefficient are the same for both Li and Lt
-    #             new_LI_name = ''.join(["LI", name.split("RADIANCE")[-1]])
-    #             new_LI_ds = unc_group.addDataset(new_LI_name)
-    #             new_LI_ds.copy(ds)
-    #             new_LI_ds.datasetToColumns()
-
-    #             new_LT_name = ''.join(["LT", name.split("RADIANCE")[-1]])
-    #             new_LT_ds = unc_group.addDataset(new_LT_name)
-    #             new_LT_ds.copy(ds)
-    #             new_LT_ds.datasetToColumns()
-    #             unc_group.removeDataset(ds.id) # remove dataset
-
-    #         if "_IRRADIANCE_" in name:
-    #             # Class-based irradiance coefficient are unique for Es
-    #             new_ES_name = ''.join(["ES", name.split("IRRADIANCE")[-1]])
-    #             new_ES_ds = unc_group.addDataset(new_ES_name)
-    #             new_ES_ds.copy(ds)
-    #             new_ES_ds.datasetToColumns()
-    #             unc_group.removeDataset(ds.id) # remove dataset
-
-    #         if "_RADCAL_" in name:
-    #             # RADCAL are always sensor specific
-    #             for sensor in sensorID:
-    #                 if sensor in ds.id:
-    #                     new_ds_name = ''.join([sensorID[sensor], ds.id.split(sensor)[-1]])
-    #                     new_ds = unc_group.addDataset(new_ds_name)
-    #                     new_ds.copy(ds)
-    #                     new_ds.datasetToColumns()
-    #                     unc_group.removeDataset(ds.id)  # remove dataset
-
-    #     return True
-
-
     @staticmethod
     def RenameUncertainties_FullChar(node):
         """
@@ -2379,9 +2537,12 @@ class Utilities:
         for sensor in sensorList:
 
             ## retrieve dataset from corresponding instrument
+            data = None
             if ConfigFile.settings['SensorType'].lower() == "seabird":
                 data = node.getGroup(sensor+'_LIGHT').getDataset(sensor)
-            elif ConfigFile.settings['SensorType'].lower() == "trios":
+            elif ConfigFile.settings['SensorType'].lower() == "trios" or \
+                ConfigFile.settings['SensorType'].lower() == "dalec" or \
+                ConfigFile.settings['SensorType'].lower() == "sorad":
                 data = node.getGroup(sensor).getDataset(sensor)
 
             # Retrieve hyper-spectral wavelengths from dataset
@@ -2462,12 +2623,14 @@ class Utilities:
 
         grp = node.getGroup("RAW_UNCERTAINTIES")
         sensorList = ['ES', 'LI', 'LT']
+
         for sensor in sensorList:
 
             ## retrieve dataset from corresponding instrument
+            data = None
             if ConfigFile.settings['SensorType'].lower() == "seabird":
                 data = node.getGroup(sensor+'_LIGHT').getDataset(sensor)
-            elif ConfigFile.settings['SensorType'].lower() == "trios":
+            elif ConfigFile.settings['SensorType'].lower() == "trios" or ConfigFile.settings['SensorType'].lower() == "sorad":
                 data = node.getGroup(sensor).getDataset(sensor)
 
             # Retrieve hyper-spectral wavelengths from dataset
@@ -2476,8 +2639,12 @@ class Utilities:
 
             # RADCAL data do not need interpolation, just removing the first line
             for data_type in ["_RADCAL_CAL"]:
+
                 ds = grp.getDataset(sensor+data_type)
-                ds.datasetToColumns()
+                try:
+                    ds.datasetToColumns()
+                except:
+                    print('erk')
                 for indx in range(len(ds.columns)):
                     indx_name = str(indx)
                     if indx_name != '':
@@ -2584,7 +2751,6 @@ class Utilities:
         # sensorId = Utilities.get_sensor_dict(node)
         sensorList = ['ES', 'LI', 'LT']
         for sensor in sensorList:
-
             ds = grp.getDataset(sensor+"_RADCAL_CAL")
             ds.datasetToColumns()
             # indx = ds.attributes["INDEX"]
@@ -2595,9 +2761,10 @@ class Utilities:
             # x_new2 = bands[valid]
 
             ## retrieve hyper-spectral wavelengths from corresponding instrument
+            data = None
             if ConfigFile.settings['SensorType'].lower() == "seabird":
                 data = node.getGroup(sensor+'_LIGHT').getDataset(sensor)
-            elif ConfigFile.settings['SensorType'].lower() == "trios":
+            elif ConfigFile.settings['SensorType'].lower() == "trios" or ConfigFile.settings['SensorType'].lower() == "sorad":
                 # inv_dict = {v: k for k, v in sensorId.items()}
                 # data = node.getGroup('SAM_'+inv_dict[sensor]+'.dat').getDataset(sensor)
                 data = node.getGroup(sensor).getDataset(sensor)
@@ -2606,10 +2773,11 @@ class Utilities:
 
             # intersect, ind1, valid = np.intersect1d(x_new, bands, return_indices=True)
             if len(bands[valid]) != len(x_new):
-                print("ERROR: band wavelentgh not found in calibration file")
+                print("ERROR: band wavelength not found in calibration file")
                 print(len(bands[valid]))
                 print(len(x_new))
-                exit()
+                # exit()
+                return False
 
             ## RADCAL_LAMP: Interpolate data to hyper-spectral pixels
             for data_type in ["_RADCAL_LAMP"]:
@@ -2637,9 +2805,6 @@ class Utilities:
                     ds.columnsToDataset()
 
         return True
-
-
-
 
     @staticmethod
     def getline(sstream, delimiter: str = '\n') -> str:
@@ -2681,84 +2846,84 @@ class Utilities:
                     ds.columns[index[i]].append(x)
 
 
-    @staticmethod
-    def read_unc(filepath: str, gp) -> None:
-        """
-        Reads in L1/L2 data using the header to organise the data storage object
-        :filepath: - the full path to the file to be opened, requires a file to have begin_data and end_data before
-        and after the main data body
-        :gp: HDFGroup object - Input data is stored as HDFDatasets and appended to this group.
-        return type: None - may be changed to bool for better error handling
-        """
-        begin_data = False  # set up data flag
-        attrs = {}
-        end_flag = 0
+    # @staticmethod
+    # def read_unc(filepath: str, gp) -> None:
+    #     """
+    #     Reads in L1/L2 data using the header to organise the data storage object
+    #     :filepath: - the full path to the file to be opened, requires a file to have begin_data and end_data before
+    #     and after the main data body
+    #     :gp: HDFGroup object - Input data is stored as HDFDatasets and appended to this group.
+    #     return type: None - may be changed to bool for better error handling
+    #     """
+    #     begin_data = False  # set up data flag
+    #     attrs = {}
+    #     end_flag = 0
 
-        with open(filepath, 'r') as f:  # open file
-            key = None; index = None
-            while True:  # start loop
-                line = Utilities.getline(f, '\n')  # reads the file until a '\n' character is reached
-                if end_flag == 0:  # end condition not met
+    #     with open(filepath, 'r', encoding="utf-8") as f:  # open file
+    #         key = None; index = None
+    #         while True:  # start loop
+    #             line = Utilities.getline(f, '\n')  # reads the file until a '\n' character is reached
+    #             if end_flag == 0:  # end condition not met
 
-                    if '[END_OF_CALDATA]' in line:  # end conditions met
-                        begin_data = False  # set to not collect data
-                        ds.columnsToDataset()  # convert read data to dataset
-                        end_flag = 1
+    #                 if '[END_OF_CALDATA]' in line:  # end conditions met
+    #                     begin_data = False  # set to not collect data
+    #                     ds.columnsToDataset()  # convert read data to dataset
+    #                     end_flag = 1
 
-                    elif line.startswith('!'):  # first lines start with '!' so can be used to determine which file is being read
-                        if 'FRM' in line:
-                            gp.attributes['INSTRUMENT_CAL_TYPE'] = line[1:]
-                        else:
-                            caltype = line[1:]
-                            if 'CAL_FILE' not in gp.attributes.keys():
-                                gp.attributes['CAL_FILE'] = []
-                            gp.attributes['CAL_FILE'].append(line[1:])
+    #                 elif line.startswith('!'):  # first lines start with '!' so can be used to determine which file is being read
+    #                     if 'FRM' in line:
+    #                         gp.attributes['INSTRUMENT_CAL_TYPE'] = line[1:]
+    #                     else:
+    #                         caltype = line[1:]
+    #                         if 'CAL_FILE' not in gp.attributes.keys():
+    #                             gp.attributes['CAL_FILE'] = []
+    #                         gp.attributes['CAL_FILE'].append(line[1:])
 
-                    # elif line.startswith('SAT'):
-                    #     device = line.rstrip()
-                    #     name = device+'_'+caltype
+    #                 # elif line.startswith('SAT'):
+    #                 #     device = line.rstrip()
+    #                 #     name = device+'_'+caltype
 
-                    # elif line.startswith('SAM_'):
-                    #     device = line.rstrip()
-                    #     name = device+'_'+caltype
+    #                 # elif line.startswith('SAM_'):
+    #                 #     device = line.rstrip()
+    #                 #     name = device+'_'+caltype
 
-                    elif begin_data:
-                        Utilities.parseLine(line, ds)  # add the data
+    #                 elif begin_data:
+    #                     Utilities.parseLine(line, ds)  # add the data
 
-                    else:  # part of header
-                        if '[CALDATA]' in line:  # begin reading data
-                            begin_data = True
-                            ds = gp.addDataset(name)
-                            if ds is None:
-                                ds = gp.getDataset(name)
-                            ds.attributes['INDEX'] = [x for x in index if x != ' ']  # populate ds attributes with column names
-                            index = None
-                            # populate ds attributes with header data
-                            for k, v in attrs.items():
-                                ds.attributes[k] = v  # set the attributes
-                            attrs.clear()
+    #                 else:  # part of header
+    #                     if '[CALDATA]' in line:  # begin reading data
+    #                         begin_data = True
+    #                         ds = gp.addDataset(name)
+    #                         if ds is None:
+    #                             ds = gp.getDataset(name)
+    #                         ds.attributes['INDEX'] = [x for x in index if x != ' ']  # populate ds attributes with column names
+    #                         index = None
+    #                         # populate ds attributes with header data
+    #                         for k, v in attrs.items():
+    #                             ds.attributes[k] = v  # set the attributes
+    #                         attrs.clear()
 
-                        else:  # part of header, check if attribute or column names
-                            if line.startswith('['):  # if line has '[ ]' then take the next line as the attribute
-                                key = line[1:-1]
-                            elif key is not None:
-                                attrs[key] = line
-                                if key == "DEVICE":
-                                    device = line.rstrip()
-                                    name = device+'_'+caltype
-                                key = None
-                            else:  # only blank lines and comments get here
-                                if index is None and len(line.split(',')) > 2:  # if comma separated then must be column names!
-                                    index = list(line[1:].split(','))
+    #                     else:  # part of header, check if attribute or column names
+    #                         if line.startswith('['):  # if line has '[ ]' then take the next line as the attribute
+    #                             key = line[1:-1]
+    #                         elif key is not None:
+    #                             attrs[key] = line
+    #                             if key == "DEVICE":
+    #                                 device = line.rstrip()
+    #                                 name = device+'_'+caltype
+    #                             key = None
+    #                         else:  # only blank lines and comments get here
+    #                             if index is None and len(line.split(',')) > 2:  # if comma separated then must be column names!
+    #                                 index = list(line[1:].split(','))
 
-                else:  # check for end condition
-                    # this will skip the first real line after 'END_OF_XXXXDATA', however this is always a comment so ignored.
-                    if end_flag >= 3:
-                        break  # end if empty lines found after [END_DATA], else more data to be read
-                    elif not line:
-                        end_flag += 1
-                    else:
-                        end_flag = 0
+    #             else:  # check for end condition
+    #                 # this will skip the first real line after 'END_OF_XXXXDATA', however this is always a comment so ignored.
+    #                 if end_flag >= 3:
+    #                     break  # end if empty lines found after [END_DATA], else more data to be read
+    #                 elif not line:
+    #                     end_flag += 1
+    #                 else:
+    #                     end_flag = 0
 
     @staticmethod
     def parseLine_no_index(line: str, ds) -> None:
@@ -2778,8 +2943,8 @@ class Utilities:
         end_count = 0
         Azimuth_angle = None
 
-        with open(filepath, 'r') as f:  # open file
-            key = None
+        with open(filepath, 'r', encoding="utf-8") as f:  # open file
+            key, ds, name = None, None, None
             while True:  # start loop
                 line = Utilities.getline(f, '\n')  # reads the file until a '\n' character is reached
                 if not line:  # breaks out of loop if three empty lines in a row
@@ -2812,8 +2977,7 @@ class Utilities:
                                     ds = gp.addDataset(f"{name}_{attrs['DATA_TYPE']}_AZ{Azimuth_angle}")
                                     Azimuth_angle = None
                                 else:
-                                    msg = f"dataset could not be contructed, Utilties.read_char(file-path, HDFGroup) in {gp.attributes['CHARACTERISATION_FILE_TYPE']}"
-                                    print(msg)
+                                    Utilities.writeLogFileAndPrint(f"dataset could not be contructed, Utilties.read_char(file-path, HDFGroup) in {gp.attributes['CHARACTERISATION_FILE_TYPE']}")
                                     raise KeyError
                             # populate ds attributes with header data
                             for k, v in attrs.items():
@@ -2836,6 +3000,117 @@ class Utilities:
         # There must be a better way...
         for ens, row in enumerate(inputArray):
             for i, value in enumerate(row):
-                    if np.isnan(value):
-                        inputArray[ens][i] = 0.0
+                if np.isnan(value):
+                    inputArray[ens][i] = 0.0
         return inputArray
+
+    @staticmethod
+    def uniquePairs(pairList):
+        '''Eliminate redundant pairs of badTimes 
+            Must be list, not np array'''
+
+        if not isinstance(pairList, list):
+            pairList = pairList.tolist()
+        if len(pairList) > 1:
+            newPairs = []
+            for pair in pairList:
+                if pair not in newPairs:
+                    newPairs.append(pair)
+        else:
+            newPairs = pairList
+        return newPairs
+
+    @staticmethod
+    def catConsecutiveBadTimes(badTimes, dateTime):
+        '''Test for the existence of consecutive, singleton records that could be 
+            concatonated into a time span. This can only work after L1B cross-sensor time interpolation.'''
+        newBadTimes = []
+        for iBT, badTime in enumerate(badTimes):
+            if iBT == 0:
+                newBadTimes.append(badTime)
+            else:
+                iDT = dateTime.index(newBadTimes[-1][1])# end time of last window
+                iDT2 = dateTime.index(badTime[0])
+                if iDT2 == iDT +1:
+                    # Consecutive
+                    newBadTimes[-1][1] = badTime[1]
+                else:
+                    newBadTimes.append(badTime)
+
+        return newBadTimes
+
+    @staticmethod
+    def findGaps_dateTime(DT1,DT2,threshold):
+        ''' Test whether one DT2 datetime has a gap > threshold [seconds] 
+            relative to DT1. '''
+        bTs = []
+        start = -1
+        i, index, stop = 0,0,0
+        tThreshold = timedelta(seconds=threshold)
+
+        # See below for faster conversions
+        np_dTT = np.array(DT2, dtype=np.datetime64)
+        np_dTT.sort()
+
+        np_dTM = np.array(DT1, dtype=np.datetime64)
+        pos = np.searchsorted(np_dTT, np_dTM, side='right')
+
+        # Consider the 3 items close the the position found.
+        # We can probably only consider 2 of them but this is simpler and less bug-prone.
+        pos1 = np.maximum(pos-1, 0)
+        pos2 = np.minimum(pos, np_dTT.size-1)
+        pos3 = np.minimum(pos+1, np_dTT.size-1)
+        tDiff1 = np.abs(np_dTT[pos1] - np_dTM)
+        tDiff2 = np.abs(np_dTT[pos2] - np_dTM)
+        tDiff3 = np.abs(np_dTT[pos3] - np_dTM)
+        tMin = np.minimum(tDiff1, tDiff2, tDiff3)
+
+        for index in range(len(np_dTM)):
+            if tMin[index] > tThreshold:
+                i += 1
+                if start == -1:
+                    start = index
+                stop = index
+            else:
+                if start != -1:
+                    startstop = [DT1[start],DT1[stop]]
+                    Utilities.writeLogFileAndPrint(f'   Flag data from {startstop[0]} to {startstop[1]}')
+                    bTs.append(startstop)
+                    start = -1
+
+        if start != -1 and stop == index: # Records from a mid-point to the end are bad
+            startstop = [DT1[start],DT1[stop]]
+            bTs.append(startstop)
+            Utilities.writeLogFileAndPrint(f'   Flag additional data from {startstop[0]} to {startstop[1]}')
+
+        if start==0 and stop==index: # All records are bad
+            return False
+
+        return bTs
+
+    @staticmethod
+    def sortDateTime(group):
+        ''' Sort all data in group chronologically based on datetime '''
+
+        if group.id != "SOLARTRACKER_STATUS" and group.id != "CAL_COEF":
+            timeStamp = group.getDataset("DATETIME").data
+            tz = pytz.timezone('UTC')
+            np_dT = np.array(timeStamp, dtype=np.datetime64)
+            sortIndex = np.argsort(np_dT)
+            np_dT_sorted = np_dT[sortIndex]
+            datetime_list = np_dT_sorted.astype('datetime64[us]').tolist()
+            datetime_list = [tz.localize(x) for x in datetime_list]
+            for ds in group.datasets:
+                if len(group.datasets[ds].data) == len(np_dT):
+                    if ds == 'DATETIME':
+                        group.datasets[ds].data = datetime_list
+                    else:
+                        group.datasets[ds].data = group.datasets[ds].data[sortIndex]
+
+            Utilities.writeLogFileAndPrint(f'Screening {group.id} for clean timestamps.')
+            if not Utilities.fixDateTime(group):
+                Utilities.writeLogFileAndPrint(f'***********Too few records in {group.id} to continue after timestamp correction. Exiting.')
+                return None
+
+        return group
+

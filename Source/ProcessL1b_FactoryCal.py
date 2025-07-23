@@ -1,52 +1,59 @@
-
+''' Process L1AQC to L1B for SeaBird in Factory or Class regime '''
+import re
 import datetime as dt
 import numpy as np
+import pandas as pd
+
+from Source.ProcessL1b_FRMCal import ProcessL1b_FRMCal
+from Source.ProcessL1aDALEC import ProcessL1aDALEC
 from Source.Utilities import Utilities
 
 class ProcessL1b_FactoryCal:
-
+    '''Process L1AQC to L1B for SeaBird in Factory or Class regime '''
     # Used to calibrate raw data (convert from L1a to L1b)
     # Reference: "SAT-DN-00134_Instrument File Format.pdf"
     @staticmethod
     def processDataset(ds, cd, inttime=None, immersed=False):
         #print("FitType:", cd.fitType)
-        if cd.fitType == "OPTIC1":
-            ProcessL1b_FactoryCal.processOPTIC1(ds, cd, immersed)
-        elif cd.fitType == "OPTIC2":
+        if cd.fitType == "OPTIC2":
             ProcessL1b_FactoryCal.processOPTIC2(ds, cd, immersed)
+        # elif cd.fitType == "OPTIC1":
+        #     ProcessL1b_FactoryCal.processOPTIC1(ds, cd, immersed)
         elif cd.fitType == "OPTIC3":
             ProcessL1b_FactoryCal.processOPTIC3(ds, cd, immersed, inttime)
         elif cd.fitType == "OPTIC4":
             ProcessL1b_FactoryCal.processOPTIC4(ds, cd, immersed)
-        elif cd.fitType == "THERM1":
-            ProcessL1b_FactoryCal.processTHERM1(ds, cd)
+        # elif cd.fitType == "THERM1":
+        #     ProcessL1b_FactoryCal.processTHERM1(ds, cd)
         elif cd.fitType == "POW10":
             ProcessL1b_FactoryCal.processPOW10(ds, cd, immersed)
         elif cd.fitType == "POLYU":
             ProcessL1b_FactoryCal.processPOLYU(ds, cd)
         elif cd.fitType == "POLYF":
             ProcessL1b_FactoryCal.processPOLYF(ds, cd)
-        elif cd.fitType == "DDMM":
-            ProcessL1b_FactoryCal.processDDMM(ds, cd)
-        elif cd.fitType == "HHMMSS":
-            ProcessL1b_FactoryCal.processHHMMSS(ds, cd)
-        elif cd.fitType == "DDMMYY":
-            ProcessL1b_FactoryCal.processDDMMYY(ds, cd)
-        elif cd.fitType == "TIME2":
-            ProcessL1b_FactoryCal.processTIME2(ds, cd)
+        # elif cd.fitType == "DDMM":
+        #     ProcessL1b_FactoryCal.processDDMM(ds, cd)
+        # elif cd.fitType == "HHMMSS":
+        #     ProcessL1b_FactoryCal.processHHMMSS(ds, cd)
+        # elif cd.fitType == "DDMMYY":
+        #     ProcessL1b_FactoryCal.processDDMMYY(ds, cd)
+        # elif cd.fitType == "TIME2":
+        #     ProcessL1b_FactoryCal.processTIME2(ds, cd)
         elif cd.fitType == "COUNT":
             pass
         elif cd.fitType == "NONE":
+            pass
+        elif cd.fitType == "THERMAL_RESP":
             pass
         else:
             msg = f'ProcessL1b_FactoryCal.processDataset: Unknown Fit Type: {cd.fitType}'
             print(msg)
             Utilities.writeLogFile(msg)
 
-    # Process OPTIC1 - not implemented
-    @staticmethod
-    def processOPTIC1(ds, cd, immersed):
-        return
+    # # Process OPTIC1 - not implemented
+    # @staticmethod
+    # def processOPTIC1(ds, cd, immersed):
+    #     return
 
     @staticmethod
     def processOPTIC2(ds, cd, immersed):
@@ -88,12 +95,12 @@ class ProcessL1b_FactoryCal:
         for x in range(ds.data.shape[0]):
             ds.data[k][x] = im * a1 * (ds.data[k][x] - a0) * (cint/aint)
 
-    # Process THERM1 - not implemented
-    #   This is for optical thermal sensors like pyrometers, I believe.
-    #   This is not for thermal responsivity of OPTICS3 sensors
-    @staticmethod
-    def processTHERM1(ds, cd):
-        return
+    # # Process THERM1 - not implemented
+    # #   This is for optical thermal sensors like pyrometers, I believe.
+    # #   This is not for thermal responsivity of OPTICS3 sensors
+    # @staticmethod
+    # def processTHERM1(ds, cd):
+    #     return
 
     @staticmethod
     def processPOW10(ds, cd, immersed):
@@ -109,8 +116,8 @@ class ProcessL1b_FactoryCal:
         k = cd.id
         for x in range(ds.data.shape[0]):
             num = 0
-            for i in range(0, len(cd.coefficients)):
-                a = float(cd.coefficients[i])
+            for i, coeff in enumerate(cd.coefficients):
+                a = float(coeff)
                 num += a * pow(ds.data[k][x],i)
             ds.data[k][x] = num
 
@@ -124,32 +131,32 @@ class ProcessL1b_FactoryCal:
                 num *= (ds.data[k][x] - float(a))
             ds.data[k][x] = num
 
-    @staticmethod
-    def processDDMM(ds, cd):
-        ''' Process DDMM - not implemented '''
-        return
-        #s = "{:.2f}".format(x)
-        #x = s[:1] + " " + s[1:3] + "\' " + s[3:5] + "\""
+    # @staticmethod
+    # def processDDMM(ds, cd):
+    #     ''' Process DDMM - not implemented '''
+    #     return
+    #     #s = "{:.2f}".format(x)
+    #     #x = s[:1] + " " + s[1:3] + "\' " + s[3:5] + "\""
 
-    @staticmethod
-    def processHHMMSS(ds, cd):
-        ''' Process HHMMSS - not implemented '''
-        return
-        #s = "{:.2f}".format(x)
-        #x = s[:2] + ":" + s[2:4] + ":" + s[4:6] + "." + s[6:8]
+    # @staticmethod
+    # def processHHMMSS(ds, cd):
+    #     ''' Process HHMMSS - not implemented '''
+    #     return
+    #     #s = "{:.2f}".format(x)
+    #     #x = s[:2] + ":" + s[2:4] + ":" + s[4:6] + "." + s[6:8]
 
-    @staticmethod
-    def processDDMMYY(ds, cd):
-        ''' Process DDMMYY - not implemented '''
-        return
-        #s = str(x)
-        #x = s[:2] + "/" + s[2:4] + "/" + s[4:]
+    # @staticmethod
+    # def processDDMMYY(ds, cd):
+    #     ''' Process DDMMYY - not implemented '''
+    #     return
+    #     #s = str(x)
+    #     #x = s[:2] + "/" + s[2:4] + "/" + s[4:]
 
-    @staticmethod
-    def processTIME2(ds, cd):
-        ''' Process TIME2 - not implemented '''
-        return
-        #x = datetime.fromtimestamp(x).strftime("%y-%m-%d %H:%M:%S")
+    # @staticmethod
+    # def processTIME2(ds, cd):
+    #     ''' Process TIME2 - not implemented '''
+    #     return
+    #     #x = datetime.fromtimestamp(x).strftime("%y-%m-%d %H:%M:%S")
 
     # Used to calibrate raw data (from L1a to L1b)
     @staticmethod
@@ -172,6 +179,35 @@ class ProcessL1b_FactoryCal:
                 ProcessL1b_FactoryCal.processDataset(ds, cd, inttime)
 
     @staticmethod
+    def get_cal_file_lines(calibrationMap):
+        """
+        function to recover effective calibration start and stop pixel from cal files.
+        """
+        cal_name_pattern = re.compile("HS.", re.IGNORECASE)  # patter for selecting shutterlight data
+        coefs = {}
+        indx = {}
+        for k, var in calibrationMap.items():
+            # filter for cal names to take out cals such as shutter dark and GPS/Tilt.
+            if re.search(cal_name_pattern, k) and k.endswith('.cal'):  # any(['HSE' in k, 'HSL' in k]):
+            # var.frameType == "shutterlight":  # ideal solution for this section, but frameType not populated in cal data
+                coefs[k] = []
+                for d in var.data:
+                    if d.type == 'ES' or d.type == 'LI' or d.type == 'LT':
+                        coefs[k].append(d.fitType)
+
+                indx[k] = []
+                for i, c in enumerate(coefs[k]):
+                    if c == 'OPTIC3':
+                        indx[k].append(i)
+
+        # TODO: assess if this is stricly necessary, all indexes the same in examples used for testing
+        start = max(ind[0] for ind in indx.values())  # -1 to cover the first pixel which has no coef but is valid
+        end = min(ind[-1] for ind in indx.values())
+        if start < 0: #  cannot be less than 0
+            start = 0
+        return start, end
+
+    @staticmethod
     def processL1b_SeaBird(node, calibrationMap):
         '''
         Calibrates L1a using information from calibration file
@@ -183,6 +219,11 @@ class ProcessL1b_FactoryCal:
         pyrUnits = None
 
         now = dt.datetime.now()
+        # get effective calibration and save to node attributes
+        start, end = ProcessL1b_FactoryCal.get_cal_file_lines(calibrationMap)
+        node.attributes['CAL_START'] = str(start)
+        node.attributes['CAL_STOP'] = str(end)
+        # node.attributes['CAL_LINES'] = lines
         timestr = now.strftime("%d-%b-%Y %H:%M:%S")
         node.attributes["FILE_CREATION_TIME"] = timestr
         msg = f"ProcessL1b_FactoryCal.processL1b: {timestr}"
@@ -196,7 +237,7 @@ class ProcessL1b_FactoryCal:
         for gp in node.groups:
             # Apply calibration factors to each dataset in HDF except the L1AQC datasets carried forward
             # for L2 uncertainty propagation
-            if not 'L1AQC' in gp.id:
+            if 'L1AQC' not in gp.id:
                 msg = f'  Group: {gp.id}'
                 print(msg)
                 Utilities.writeLogFile(msg)
@@ -210,13 +251,13 @@ class ProcessL1b_FactoryCal:
 
                         ProcessL1b_FactoryCal.processGroup(gp, cf)
 
-                        if esUnits == None:
+                        if esUnits is None:
                             esUnits = cf.getUnits("ES")
-                        if liUnits == None:
+                        if liUnits is None:
                             liUnits = cf.getUnits("LI")
-                        if ltUnits == None:
+                        if ltUnits is None:
                             ltUnits = cf.getUnits("LT")
-                        if pyrUnits == None:
+                        if pyrUnits is None:
                             pyrUnits = cf.getUnits("T") #Pyrometer
 
         node.attributes["LI_UNITS"] = liUnits
@@ -224,6 +265,52 @@ class ProcessL1b_FactoryCal:
         node.attributes["ES_UNITS"] = esUnits
         node.attributes["L1AQC_UNITS"] = 'count'
         node.attributes["SATPYR_UNITS"] = pyrUnits
+
+        # Calculate 6S model
+        print('Running sixS')
+
+        sensortype = "ES"
+        # Irradiance direct and diffuse ratio
+        res_sixS = ProcessL1b_FRMCal.get_direct_irradiance_ratio(node, sensortype)
+
+        # Store sixS results in new group
+        grp = node.getGroup(sensortype)
+        solar_zenith = res_sixS['solar_zenith']
+        # ProcessL1b_FRMCal.get_direct_irradiance_ratio uses Es bands to run 6S and then works around bands that
+        #  don't have values from Tartu for full FRM. Here, use all the Es bands.
+        direct_ratio = res_sixS['direct_ratio']
+        diffuse_ratio = res_sixS['diffuse_ratio']
+        # sixS model irradiance is in W/m^2/um, scale by 10 to match HCP units
+        # model_irr = (res_sixS['direct_irr']+res_sixS['diffuse_irr']+res_sixS['env_irr'])[:,ind_raw_data]/10
+        model_irr = (res_sixS['direct_irr']+res_sixS['diffuse_irr']+res_sixS['env_irr'])/10
+
+        sixS_grp = node.addGroup("SIXS_MODEL")
+        for dsname in ["DATETAG", "TIMETAG2", "DATETIME"]:
+            # copy datetime dataset for interp process
+            ds = sixS_grp.addDataset(dsname)
+            ds.data = grp.getDataset(dsname).data
+
+        ds = sixS_grp.addDataset("sixS_irradiance")
+
+        irr_grp = node.getGroup('ES_LIGHT_L1AQC')
+        str_wvl = np.asarray(pd.DataFrame(irr_grp.getDataset(sensortype).data).columns)
+        ds_dt = np.dtype({'names': str_wvl,'formats': [np.float64]*len(str_wvl)})
+        rec_arr = np.rec.fromarrays(np.array(model_irr).transpose(), dtype=ds_dt)
+        ds.data = rec_arr
+
+        ds = sixS_grp.addDataset("direct_ratio")
+        ds_dt = np.dtype({'names': str_wvl,'formats': [np.float64]*len(str_wvl)})
+        rec_arr = np.rec.fromarrays(np.array(direct_ratio).transpose(), dtype=ds_dt)
+        ds.data = rec_arr
+
+        ds = sixS_grp.addDataset("diffuse_ratio")
+        ds_dt = np.dtype({'names': str_wvl,'formats': [np.float64]*len(str_wvl)})
+        rec_arr = np.rec.fromarrays(np.array(diffuse_ratio).transpose(), dtype=ds_dt)
+        ds.data = rec_arr
+
+        ds = sixS_grp.addDataset("solar_zenith")
+        ds.columns["solar_zenith"] = solar_zenith
+        ds.columnsToDataset()
 
         return node
 
@@ -239,7 +326,7 @@ class ProcessL1b_FactoryCal:
             if sensor+"_LIGHT" in gp.id :
                 try:
                     cf = calibrationMap[gp.attributes["CalFileName"]]
-                except:
+                except Exception:
                     # This can happen if you try to process L2 with a different calMap from L1B data
                     msg = f'ProcessL1b_FactoryCal.extract_calibration_coeff: Mismatched Cal File: {gp.attributes["CalFileName"]}'
                     print(msg)
@@ -251,6 +338,24 @@ class ProcessL1b_FactoryCal:
                     if cd.fitType == "OPTIC3":
                         coeff.append(float(cd.coefficients[1]))
                         wvl.append(float(cd.id))
+        return np.array(wvl), np.array(coeff)
+
+    @staticmethod
+    def extract_calibration_coeff_dalec(calibrationMap, sensor):
+        '''
+        extract spectral calibration coeff as array
+        '''
+        sensorCoeff={'ES':'a0','LT':'b0','LI':'c0'}
+        sensorType={'ES':'Lambda_Ed','LT':'Lambda_Lu','LI':'Lambda_Lsky'}
+        calMap=list(calibrationMap.values())
+        calfile=calMap[0].name
+        #print(calfile)
+        #read cal data
+        meta_instrument,coefficients,cal_data=ProcessL1aDALEC.read_cal(calfile)
+        #print(cal_data)
+        coeff = cal_data[sensorCoeff[sensor]]
+        wvl = cal_data[sensorType[sensor]]
+         
         return np.array(wvl), np.array(coeff)
 
 

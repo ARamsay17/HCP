@@ -132,6 +132,8 @@ class ProcessL1aqc_deglitch:
         lightData = None
 
         for gp in node.groups:
+            if 'FrameType' not in gp.attributes:
+                continue
             if gp.attributes["FrameType"] == "ShutterDark" and sensorType in gp.datasets:
                 darkData = gp.getDataset(sensorType)
                 darkDateTime = Utilities.getDateTime(gp)
@@ -289,17 +291,19 @@ class ProcessL1aqc_deglitch:
 
         # Delete the glitchy rows of the datasets
         for gp in node.groups:
+            if 'FrameType' not in gp.attributes:
+                continue
             if gp.attributes["FrameType"] == "ShutterDark" and sensorType in gp.datasets:
                 try:
                     gp.datasetDeleteRow(np.where(badIndexDark))
-                except:
+                except Exception:
                     print('Error deleting group datasets. Check that Light/Dark cals are correctly identified in Configuration Window.')
 
             if gp.attributes["FrameType"] == "ShutterLight" and sensorType in gp.datasets:
                 lightData = gp.getDataset(sensorType)
                 try:
                     gp.datasetDeleteRow(np.where(badIndexLight))
-                except:
+                except Exception:
                     print('Error deleting group datasets. Check that Light/Dark cals are correctly identified in Configuration Window.')
 
         return False
@@ -350,18 +354,18 @@ class ProcessL1aqc_deglitch:
         # Add a dataset to each group for DATETIME, as defined by TIMETAG2 and DATETAG
         # root  = Utilities.rootAddDateTime(root)
 
-        # Fix in case time doesn't increase from one sample to the next
-        # or there are fewer than 2 two stamps remaining.
-        for gp in root.groups:
-            if gp.id != "SOLARTRACKER_STATUS":
-                msg = f'Screening {gp.id} for clean timestamps.'
-                print(msg)
-                Utilities.writeLogFile(msg)
-                if not Utilities.fixDateTime(gp):
-                    msg = f'***********Too few records in {gp.id} to continue after timestamp correction. Exiting.'
-                    print(msg)
-                    Utilities.writeLogFile(msg)
-                    return None
+        # # Fix in case time doesn't increase from one sample to the next
+        # # or there are fewer than 2 two stamps remaining.
+        # for gp in root.groups:
+        #     if gp.id != "SOLARTRACKER_STATUS":
+        #         msg = f'Screening {gp.id} for clean timestamps.'
+        #         print(msg)
+        #         Utilities.writeLogFile(msg)
+        #         if not Utilities.fixDateTime(gp):
+        #             msg = f'***********Too few records in {gp.id} to continue after timestamp correction. Exiting.'
+        #             print(msg)
+        #             Utilities.writeLogFile(msg)
+        #             return None
 
         if int(ConfigFile.settings["bL1aqcDeglitch"]) == 1:
             flagES = ProcessL1aqc_deglitch.processDataDeglitching(root, "ES")

@@ -4,37 +4,89 @@
 # vscode
 .vscode/
 
+# conda
+.conda/
+
 # Backup stores
 ~*
 *.py~
 .DS_Store
 
 # HyperCP
-.gitignore
+# .gitignore
+/Bundled/
+# Data/FidRadDB/
+Data/FidRadDB/SeaBird/*
+Data/FidRadDB/TriOS/*
 Data/Zhang_rho_db.mat
+Data/Zhang_rho_db_expanded.mat
+Data/Zhang_rho_LUT.nc
+Data/Z17_LUT_*.nc
 Data/Anc/
 Data/L*/
-Data/Sample_Data/L*/
 Data/Reports/
-Data/Sample_Data/Reports/
 Data/Photos/
+# zong_plots/
+# The /* is required if you later want to unignore subsets (i.e., to keep the directory itself)
+Data/Sample_Data/DALEC/*
+!Data/Sample_Data/DALEC/RAW
+!Data/Sample_Data/DALEC/RAW/*
+!Data/Sample_Data/DALEC/Instrument_Characterization*/
+!Data/Sample_Data/DALEC/Instrument_Characterization*/*
+!Data/Sample_Data/DALEC/*Ancillary.sb
+Data/Sample_Data/Manual_TriOS/*
+!Data/Sample_Data/Manual_TriOS/RAW
+!Data/Sample_Data/Manual_TriOS/RAW/*
+!Data/Sample_Data/Manual_TriOS/Instrument_Characterization*/
+!Data/Sample_Data/Manual_TriOS/Instrument_Characterization*/*
+!Data/Sample_Data/Manual_TriOS/*Ancillary.sb
+Data/Sample_Data/pySAS/*
+!Data/Sample_Data/pySAS/RAW
+!Data/Sample_Data/pySAS/RAW/*
+!Data/Sample_Data/pySAS/Instrument_Characterization*/
+!Data/Sample_Data/pySAS/Instrument_Characterization*/*
+!Data/Sample_Data/pySAS/Photos/
+!Data/Sample_Data/pySAS/*Ancillary.sb
+Data/Sample_Data/SolarTracker/*
+!Data/Sample_Data/SolarTracker/RAW
+!Data/Sample_Data/SolarTracker/RAW/*
+!Data/Sample_Data/SolarTracker/Instrument_Characterization*/
+!Data/Sample_Data/SolarTracker/Instrument_Characterization*/*
+!Data/Sample_Data/SolarTracker/*Ancillary.sb
+Data/Sample_Data/SoRad/*
+!Data/Sample_Data/SoRad/RAW
+!Data/Sample_Data/SoRad/RAW/*
+!Data/Sample_Data/SoRad/Instrument_Characterization*/
+!Data/Sample_Data/SoRad/Instrument_Characterization*/*
+!Data/Sample_Data/SoRad/*Ancillary.sb
+
+Config/* 
+# To update sample configurations, uncomment:
+# !Config/sample_*_Calibration/
+# !Config/sample_*.cfg
+# !Config/sample_*.hdr
+# !Config/sample_*.csv
+
+## To allow local changes to a file on remote, but not have those tracked:
+# git update-index --skip-worktree Config/sample_SEABIRD_pySAS.cfg
+#   Had to be run for each file due to conflicts with unrelated config files
+#   See aliases in .bashrc
+#   Will cause conflict changing branches if local files are different across branches
+
 Plots/
 Logs/
-Config/*
-*.cfg
-*.hdr
 
-Data/FidRadDB_characterization/
 .pylintrc
 *.pyc
 *.log
-runtest.py
 run_*.py
-!run_sample.py
+!run_Sample_Data.py
 
 # copernicus url and keys
 .cdsapirc
-#.ecmwf_api_config
+# gitignore only skips new files, not updates to existing files
+.ecmwf_api_config
 
 #ignore ".idea/" if working with pycharm:
 .idea/
+

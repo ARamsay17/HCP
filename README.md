@@ -4,6 +4,9 @@
 
 <center><img src="Data/Img/with_background_530x223.png" alt="Banner"></center>
 
+![Test](https://github.com/nasa/HyperCP/actions/workflows/ApplicationTesting.yml/badge.svg)
+![Bundle](https://github.com/nasa/HyperCP/actions/workflows/Pipeline.yml/badge.svg)
+
 Hyperspectral In situ Support for PACE (HyperInSPACE) Community Processor (HyperCP) is designed to provide hyperspectral support for the <a href='https://pace.gsfc.nasa.gov/'>PACE mission</a> but also multispectral missions such as
 [Sentinel-3](https://sentinels.copernicus.eu/web/sentinel/missions/sentinel-3) by processing automated and manual, above-water,
 hyperspectral ocean color radiometry data using state-of-the-art methods and protocols for quality assurance,
@@ -11,9 +14,9 @@ uncertainty estimation/propagation, sky/sunglint correction, convolution to sate
 retrieval. Data outputs are formatted to text files for submission to the [SeaBASS](https://seabass.gsfc.nasa.gov/) and [OCDB](https://ocdb.eumetsat.int/) databases and saved as comprehensive HDF5 records with automated processing reports. The package is designed to facilitate rigorous, flexible, and transparent data processing for the ocean color remote sensing community. Radiometry processed in HyperCP is used for water optical characterization, ocean color product retrieval algorithm development, and orbital platform validation.
 
 Currently, HyperCP supports <a href='https://www.seabird.com/'>Sea-Bird Scientific</a> HyperSAS packages with and
-without SolarTracker or pySAS robotic platforms as well as [TriOS](https://www.trios.de/en/radiometers.html) used in manual configuration. If you are interested in integrating support for your platform, contact us at the email addresses below or in the Discussions tab of the GitHub repository.
+without SolarTracker or pySAS robotic platforms as well as [TriOS](https://www.trios.de/en/radiometers.html) used in manual configuration and IMO [DALEC](https://insitumarineoptics.com/dalec/). Support of Monocle/PML [So-Rad](https://monocle-h2020.eu/Sensors_and_platforms/Solar_tracking_radiometry_platform_en.html) is pending. If you are interested in integrating support for your platform, contact us at the email addresses below or in the Discussions tab of the GitHub repository.
 
-## Version 1.2.1
+## Version 1.2.14c
 
 ```
 The MIT license
@@ -31,9 +34,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 **Main author**: Dirk Aurin, MSU @ NASA Goddard Space Flight Center <dirk.a.aurin@nasa.gov>
 
-**Co-authors**: Nathan Vandenberg @ UVictoria, Maycira Costa @ UVictoria (in the frame of [PySciDON](https://ieeexplore.ieee.org/abstract/document/8121926)), Alexis Deru @ ACRI-ST, Ashley Ramsay @ NPL, Agnieszka Bialek @ NPL, Marine Bretagnon @ ACRI-ST (in the frame of Copernicus' [FRM4SOC-2](https://frm4soc2.eumetsat.int/)), Gabriele Bai @ ACRI-ST, Juan Ignacio Gossn @ EUMETSAT, Nils Haentjens @ UMaine
+**Co-authors**: Nathan Vandenberg @ UVictoria (in the frame of [PySciDON](https://ieeexplore.ieee.org/abstract/document/8121926)), Juan Ignacio Gossn @ EUMETSAT, Ashley Ramsay @ NPL, Nils Haentjens @ UMaine, Agnieszka Bialek @ NPL, Alexis Deru @ ACRI-ST, Heng Gu @ NOAA, Mohamed Abdelmegid @ NOAA, Raphael Mabit @ UQuebec, Maycira Costa @ UVictoria, Marine Bretagnon @ ACRI-ST, Gabriele Bai @ ACRI-ST
 
-**Contact**: Discussions tab in GitHub, or Dirk Aurin, MSU @ NASA Goddard Space Flight Center <dirk.a.aurin@nasa.gov>, and Juan Ignacio Gossn @ EUMETSAT <JuanIgnacio.Gossn@eumetsat.int>
+**Contact**: Discussions or Issues tab in GitHub, or Dirk Aurin, MSU @ NASA Goddard Space Flight Center <dirk.a.aurin@nasa.gov>, and Juan Ignacio Gossn @ EUMETSAT <JuanIgnacio.Gossn@eumetsat.int>
+
+## Contents:
+### [Requirements and Installation](#requirements-and-installation)
+### [Launch the Program](#3-launch-hypercp-for-the-first-time)
+### [Quick Start Guide](#quick-start-overview)
+### [Main Window](#main-window-description)
+### [Configuration Window (README_configuration.md)](README_configuration.md)
+
 
 ## Requirements and Installation
 
@@ -45,8 +56,7 @@ Clone this repository (branch: "master") to a convenient directory on your compu
 prompt$ git clone --depth 1 https://github.com/nasa/HyperCP.git /path/to/convenient/directory
 ```
 
-or, if you are unfamiliar with git, simply download and unzip by clicking ```Code >> Download ZIP```  -
-we encourage you to use git though (see why below). A link to bundled executable versions of HyperCP for Windows, MacOS, and Linux will be added soon.
+If you are, or plan to be, a HyperCP Team collaborator, or if you are interested in early release branches, drop '--depth 1' from the clone command. If you are unfamiliar with git or having difficulty with the anaconda environment, [bundled releases](https://github.com/nasa/HyperCP/releases) are available for Mac, Windows, and Linux. Go to the latest release (named for the Version above) and under Assets download and unzip the version for your operating system.
 
 ### 2. Get the HyperCP environment
 
@@ -85,6 +95,11 @@ If environment problems are encountered after updating HyperCP (e.g, dependencie
 
 ```
 conda env update --file environment.yml --prune
+```
+**NOTE:** If you started working with v1.2.8 or lower and are now updating to v1.2.9 or higher, you may need to remove the old hypercp environment and reinstall the environment as described above.
+```
+prompt$ conda deactivate
+prompt$ conda remove -n hypercp --all
 ```
 
 To report a bug, please submit it [here](https://github.com/nasa/HyperCP/issues), the HyperCP Team will take
@@ -126,9 +141,8 @@ into them as described below. No system files will be changed.
 
 - **Zhang skyglint correction database**: This (~ 2.3 GB) database will be optionally used for the glint correction
 based on the method of [Zhang et al., 2017, OE, 25(4)](https://opg.optica.org/oe/fulltext.cfm?uri=oe-25-4-A1&id=357012)).
-It will stored at ```/Data/Zhang_rho_db.mat```.
-If this download should fail for any reason, further instructions will be given
-at the command line terminal where Main.py was launched.
+It will stored at ```/Data/Zhang_rho_db.mat``` (or similar). If this download should fail for any reason, further instructions will be given
+at the command line terminal where Main.py was launched. We are currently working to improve efficiency with LUTs for Z17, so there will also be smaller (~129 MB) LUTs downloaded to ./Data.
 
 ## Usage
 
@@ -153,11 +167,6 @@ HyperCP is a Main-View-Controller Python package with a GUI that can be launched
 However you launch the GUI, *watch for important feedback at the command line terminal* in addition to informational GUI windows.
 Batching multiple files across single or multiple processing levels is also possible
 as described below.
-
-<!-- To see an example of a complete workflow of the processing from raw data to the final HDF and SeaBASS/OCDB L2 outputs,
-both for TriOS and HyperSAS,
-please see [here](https://gitlab.eumetsat.int/OC/External/frm4soc-cp/-/blob/master/Command_line_example.cmd) <- firewalled -->
-
 
 The Main window appears once Main.py is launched, as described [above](README.md/#3-launch-hypercp-for-the-first-time):
 
@@ -185,7 +194,7 @@ Pop-up windows for failed processing (i.e, no output data due to either corrupt 
 The configuration section in the Main window involves setting the correct config (.cfg) file, which in turn includes
  details of which processing parameters and calibration/characterisation files will be used to run HyperCP.
 
-You will need to read [this](README_configuration.md) to learn how to set your configuration file appropriately.
+You will need to read the [Configuration README](README_configuration.md) to learn how to set your configuration file appropriately.
 
 1. The 'New' button allows creation of a new configuration file.
 2. 'Edit' allows editing the currently selected configuration file.
@@ -194,6 +203,8 @@ calibration directories.
 
  After creating a new configuration file, select it from the drop-down menu, and select 'Edit' to launch the
  **Configuration module** GUI.
+
+ Changes to Input/Output directories and ancillary file in the Main window should link to each configuration.
 
 #### 2. Input/Output Directories
 
@@ -223,6 +234,7 @@ Optional data fields in the SeaBASS format include
 - ship speed,
 - relative sensor azimuth,
 - aerosol optical depth,
+- air temperature,
 - cloud cover,
 - salinity,
 - water temperature,
@@ -232,6 +244,8 @@ Example ancillary files are included in /Data/Sample_Data for use as a template.
 
 In case environmental conditions were not logged in the field, or for filling in gaps in logged data, they will be
 retrieved from GMAO or ECMWF models as described below. The ancillary data file is optional (though strongly advised for adding wind speed at a minimum) provided the sensor suite is equipped with a SolarTracker, pySAS, or equivalent to supply the relevant sensor/solar geometries combined with a GPS for position and time. If no SolarTracker-type instrument is present to report the relative sensor/solar geometries, the ancillary file must be provided with at least the ship heading and relative angle between the bow of the ship and the sensor azimuth as a function of time (see sample "NOTRACKER" configuration provided). If no GPS is present, position and time are also required in an ancillary file. Application of the Zhang et al. (2017) glint correction will require the addition of GMAO or ECMWF model data for aerosol optical depth.
+
+**The relative azimuth convention adopted in HyperCP (and expected in ancillary inputs) defines relAz as the angle between the sensor viewing angle (from the sensor to the target) and the solar azimuth angle (from the sensor to the sun). Certain modules in HyperCP, including the Zhang et al. 2017 glint correction and the Morel 2002 BRDF correction use 180 - relAz.**
 
 
 #### 4. Single-level Processing
@@ -261,7 +275,7 @@ discussion [here](README_configuration.md) regarding processing.
 
 - Level 1A Processing: Process data from raw binary (Satlantic HyperSAS '.RAW' collections) to L1A (Hierarchical Data Format 5 '.hdf').
 Calibration files and the RawFileReader.py script allow for interpretation of raw data fields, which are read into HDF
-objects.
+objects. HyperCP is optimized for hour-long raw files when using automated data collections (e.g., pySAS, DALEC, So-Rad).
 - Level 1AQC Processing: Data are filtered for vessel attitude (pitch, roll, and yaw when available), viewing
 and solar geometry.
 - Level 1B Processing: Dark current corrections are applied followed by instrument calibrations and then matching of timestamps and wavebands
@@ -273,7 +287,9 @@ reflectance within each ensemble.
 
 ### Executing HyperCP from the command line
 
-There is a command line option for batching a single level which can be triggered by adding the ```-cmd``` argument:
+There are a couple of way HyperCP can be run without the GUI. The first (recommended) way is to make a scripted call to the Command class in the Main.py file. This is demonstrated with the [run_Sample_Data.py](run_Sample_Data.py) script provided in the top level of the repository. By copying this file and customizing it for your data (e.g., changing file paths to make your directories), and editing the processing configuration (either in the GUI or manually editting the relevant ./Config/your_Configuration.cfg file) you can use a direct python call to the script to run HyperCP. As demonstrated in the sample script, it can be run for multiple levels and can use multiple core threads to speed up processing.
+
+[NOTE: command line option is currently obsolete pending updates] There is also a command line option for batching a single level which can be triggered by adding the ```-cmd``` argument:
 
 ```
 (hypercp) prompt$ python Main.py -c config -i inputFile -o outputDirectory -l processingLevel
@@ -281,7 +297,6 @@ There is a command line option for batching a single level which can be triggere
 
 where ```config``` is the configuration file, and the other arguments are self-explanatory
 (```processingLevel``` should be in all caps, e.g., ```L1AQC```).
-An example script has been provided (```run_sample.py```) for batching files using the command line option.
 
 ## References
 - Abe, N., B. Zadrozny and J. Langford (2006). Outlier detection by active learning. Proceedings of the 12th ACM SIGKDD international conference on Knowledge discovery and data mining. Philadelphia, PA, USA, Association for Computing Machinery: 504–509.

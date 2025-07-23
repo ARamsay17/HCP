@@ -1,0 +1,54 @@
+name: Build
+
+on:
+  workflow_call:
+    outputs:
+      files:
+        description: 'Artifact filenames.'
+        value: |
+          ${{ jobs.Build.outputs.ubuntu_artifact_filename }}
+          ${{ jobs.Build.outputs.macos_artifact_filename }}
+          ${{ jobs.Build.outputs.windows_artifact_filename }}
+
+jobs:
+  Build:
+    name: Bundle
+
+    runs-on: ${{ matrix.os }}
+    defaults:  # Required for conda environment activation
+      run:
+        shell: bash -el {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['ubuntu-latest', 'macos-latest', 'windows-latest']
+
+    steps:
+      - name: ⏬ Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: 🔧 Setup Environment
+        uses: ./.github/actions/SetupEnvironment
+
+      - name: 📑 Make Bundle
+        run: |
+          python make.py
+          echo "BUNDLE_NAME=$(ls Bundled/dist | head -1 | xargs)" >> $GITHUB_ENV
+
+      - name: 📥 Zip Bundle
+        uses: thedoctor0/zip-release@0.7.6
+        with:
+          type: 'zip'
+          directory: 'Bundled/dist/'
+          path: '${{ env.BUNDLE_NAME }}'
+          filename: '${{ env.BUNDLE_NAME }}.zip'
+
+      - name: ⏫️ Upload Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUNDLE_NAME }}
+          path: Bundled/dist/${{ env.BUNDLE_NAME }}.zip
+          compression-level: 0
+          # Double zip as need zip for release page (ideally want to prevent unzip from download artifact)

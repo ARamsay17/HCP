@@ -22,10 +22,13 @@ class HDFGroup:
         for k,v in gp.attributes.items():
             self.attributes[k] = v
 
-    def datasetDeleteRow(self, i):
+    def datasetDeleteRow(self, i):  
         for k in self.datasets:
-            ds = self.datasets[k]
-            ds.data = np.delete(ds.data, (i), axis=0)
+            # Avoid non-temporal datasets. Should cover TriOS and DALEC
+            skipList = ['back_es','cal_es','back_li','cal_li','back_lt','cal_lt','capsontemp']
+            if k.lower() not in skipList:
+                ds = self.datasets[k]
+                ds.data = np.delete(ds.data, (i), axis=0)
 
     def removeDataset(self, name):
         if len(name) == 0:
@@ -92,7 +95,7 @@ class HDFGroup:
         # Read attributes
         #print("Attributes:", [k for k in f.attrs.keys()])
         for k in f.attrs.keys():
-            if type(f.attrs[k]) == np.ndarray:
+            if type(f.attrs[k]) == np.ndarray:  # noqa: E721
                 self.attributes[k] = f.attrs[k]
             else: # string attribute
                 self.attributes[k] = f.attrs[k].decode("utf-8")

@@ -1,19 +1,17 @@
+'''GUI to set up processing configuration'''
 import os
-import shutil, glob
+import shutil
 from PyQt5 import QtCore, QtGui, QtWidgets
-from pathlib import Path
 
 from Source import PATH_TO_CONFIG
-# from Source.MainConfig import MainConfig
-# from Source.Controller import Controller
 from Source.ConfigFile import ConfigFile
 from Source.CalibrationFileReader import CalibrationFileReader
 from Source.AnomalyDetection import AnomAnalWindow
 from Source.SeaBASSHeader import SeaBASSHeader
 from Source.SeaBASSHeaderWindow import SeaBASSHeaderWindow
-from Source.GetAnc import GetAnc
+from Source.GetAnc_credentials import GetAnc_credentials
 from Source.OCproductsWindow import OCproductsWindow
-
+from Source.CalCharWindow import CalCharWindow
 
 class ConfigWindow(QtWidgets.QDialog):
     ''' Configuration window object '''
@@ -22,6 +20,7 @@ class ConfigWindow(QtWidgets.QDialog):
         # self.setStyleSheet("background-color: #e3e6e1;")
         self.setModal(True)
         self.name = name
+        self.newName = ''
         self.inputDirectory = inputDir
         self.initUI()
 
@@ -36,7 +35,7 @@ class ConfigWindow(QtWidgets.QDialog):
         # sensor type
         sensorTypeLabel = QtWidgets.QLabel("Sensor Type:", self)
         self.sensorTypeComboBox = QtWidgets.QComboBox(self)
-        self.sensorTypeComboBox.addItems(["Choose a sensor ...", "SeaBird", "TriOS"])
+        self.sensorTypeComboBox.addItems(["Choose a sensor ...", "SeaBird", "TriOS", "Dalec"])
         CurrentSensor = ConfigFile.settings["SensorType"]
         index = self.sensorTypeComboBox.findText(CurrentSensor,QtCore.Qt.MatchFixedString)
         self.sensorTypeComboBox.setCurrentIndex(index)
@@ -44,9 +43,9 @@ class ConfigWindow(QtWidgets.QDialog):
         self.sensorTypeComboBox.currentIndexChanged.connect(self.sensorTypeChanged)
         # self.setSensorSettings()
         # Calibration Config Settings
-        self.addCalibrationFileButton = QtWidgets.QPushButton("Add Cals")
+        self.addCalibrationFileButton = QtWidgets.QPushButton("Add Factory Cals")
         self.addCalibrationFileButton.clicked.connect(self.addCalibrationFileButtonPressed)
-        self.deleteCalibrationFileButton = QtWidgets.QPushButton("Remove Cals")
+        self.deleteCalibrationFileButton = QtWidgets.QPushButton("Remove F. Cals")
         self.deleteCalibrationFileButton.clicked.connect(self.deleteCalibrationFileButtonPressed)
 
         calFiles = ConfigFile.settings["CalibrationFiles"]
@@ -59,8 +58,9 @@ class ConfigWindow(QtWidgets.QDialog):
         fsm.setNameFilters(["*.cal", "*.tdf", "*.ini", ".dat"])
         fsm.setNameFilterDisables(False)
         fsm.setFilter(QtCore.QDir.NoDotAndDotDot | QtCore.QDir.Files)
-        calibrationDir = os.path.splitext(self.name)[0] + "_Calibration"
-        self.calibrationPath = os.path.join(PATH_TO_CONFIG, calibrationDir)
+        # calibrationDir = os.path.splitext(self.name)[0] + "_Calibration"
+        # ConfigFile.settings['calibrationPath'] = os.path.join(PATH_TO_CONFIG, calibrationDir)
+        self.calibrationPath = ConfigFile.getCalibrationDirectory()
         index = fsm.setRootPath(self.calibrationPath)
         self.calibrationFileComboBox.setModel(fsm)
         self.calibrationFileComboBox.setRootModelIndex(index)
@@ -71,26 +71,32 @@ class ConfigWindow(QtWidgets.QDialog):
         self.calibrationEnabledCheckBox.stateChanged.connect(self.calibrationEnabledStateChanged)
         self.calibrationEnabledCheckBox.setEnabled(False)
 
-        # CurrentSensor = ConfigFile.settings["SensorType"]
+        calibrationFrameTypeLabel = QtWidgets.QLabel("Frame Type:", self)
+        self.calibrationFrameTypeComboBox = QtWidgets.QComboBox(self)
         if CurrentSensor.lower() == "seabird":
-            calibrationFrameTypeLabel = QtWidgets.QLabel("Frame Type:", self)
-            self.calibrationFrameTypeComboBox = QtWidgets.QComboBox(self)
             self.calibrationFrameTypeComboBox.addItem("ShutterLight")
             self.calibrationFrameTypeComboBox.addItem("ShutterDark")
             self.calibrationFrameTypeComboBox.addItem("Not Required")
-            # self.calibrationFrameTypeComboBox.addItem("LightAncCombined")
             self.calibrationFrameTypeComboBox.currentIndexChanged.connect(self.calibrationFrameTypeChanged)
             self.calibrationFrameTypeComboBox.setEnabled(False)
 
         elif CurrentSensor.lower() == "trios":
-            calibrationFrameTypeLabel = QtWidgets.QLabel("Frame Type:", self)
-            self.calibrationFrameTypeComboBox = QtWidgets.QComboBox(self)
             self.calibrationFrameTypeComboBox.addItem("LI")
             self.calibrationFrameTypeComboBox.addItem("LT")
             self.calibrationFrameTypeComboBox.addItem("ES")
             self.calibrationFrameTypeComboBox.addItem("Not Required")
             self.calibrationFrameTypeComboBox.currentIndexChanged.connect(self.calibrationFrameTypeChanged)
             self.calibrationFrameTypeComboBox.setEnabled(False)
+
+        elif CurrentSensor.lower() == "dalec":
+            self.calibrationFrameTypeComboBox.addItem("Not Required")
+            self.calibrationFrameTypeComboBox.currentIndexChanged.connect(self.calibrationFrameTypeChanged)
+            self.calibrationFrameTypeComboBox.setEnabled(True)
+
+        elif CurrentSensor.lower() == "dalec":
+            self.calibrationFrameTypeComboBox.addItem("Not Required")
+            self.calibrationFrameTypeComboBox.currentIndexChanged.connect(self.calibrationFrameTypeChanged)
+            self.calibrationFrameTypeComboBox.setEnabled(True)
 
         # L1A
         l1aLabel = QtWidgets.QLabel("Level 1A Processing", self)
@@ -117,16 +123,23 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l1aCleanSZACheckBoxUpdate()
         self.l1aCleanSZACheckBox.clicked.connect(self.l1aCleanSZACheckBoxUpdate)
 
+        self.l1aCODLabel = QtWidgets.QLabel("     Caps-on darks only (TriOS)", self)
+        self.l1aCODCheckBox = QtWidgets.QCheckBox("", self)
+        if ConfigFile.settings["bL1aCOD"]:
+            self.l1aCODCheckBox.setChecked(True)
+        self.l1aCODCheckBoxUpdate()
+        self.l1aCODCheckBox.clicked.connect(self.l1aCODCheckBoxUpdate)
+
         # L1AQC
         l1aqcLabel = QtWidgets.QLabel("Level 1AQC Processing", self)
         l1aqcLabel.setFont(l1aLabel_font)
         l1aqcSublabel = QtWidgets.QLabel(" Filter on pitch, roll, yaw, and azimuth", self)
 
-        #   SolarTracker
-        self.l1aqcSolarTrackerLabel = QtWidgets.QLabel(" SolarTracker or pySAS", self)
-        self.l1aqcSolarTrackerCheckBox = QtWidgets.QCheckBox("", self)
-        if int(ConfigFile.settings["bL1aqcSolarTracker"]) == 1:
-            self.l1aqcSolarTrackerCheckBox.setChecked(True)
+        #   SunTracker
+        self.l1aqcSunTrackerLabel = QtWidgets.QLabel(" Autonomous Sun Tracker", self)
+        self.l1aqcSunTrackerCheckBox = QtWidgets.QCheckBox("", self)
+        if ConfigFile.settings["bL1aqcSunTracker"]:
+            self.l1aqcSunTrackerCheckBox.setChecked(True)
 
         #   Rotator
         self.l1aqcRotatorHomeAngleLabel = QtWidgets.QLabel(" Rotator Home Angle Offset", self)
@@ -156,7 +169,7 @@ class ConfigWindow(QtWidgets.QDialog):
          #  Rotator
         self.l1aqcRotatorAngleLabel = QtWidgets.QLabel(" Absolute Rotator Angle Filter", self)
         self.l1aqcRotatorAngleCheckBox = QtWidgets.QCheckBox("", self)
-        if int(ConfigFile.settings["bL1aqcRotatorAngle"]) == 1:
+        if ConfigFile.settings["bL1aqcRotatorAngle"]:
             self.l1aqcRotatorAngleCheckBox.setChecked(True)
         self.l1aqcRotatorAngleMinLabel = QtWidgets.QLabel("       Rotator Angle Min", self)
         self.l1aqcRotatorAngleMinLineEdit = QtWidgets.QLineEdit(self)
@@ -166,10 +179,10 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l1aqcRotatorAngleMaxLineEdit = QtWidgets.QLineEdit(self)
         self.l1aqcRotatorAngleMaxLineEdit.setText(str(ConfigFile.settings["fL1aqcRotatorAngleMax"]))
         self.l1aqcRotatorAngleMaxLineEdit.setValidator(doubleValidator)
-        self.l1aqcSolarTrackerCheckBoxUpdate()
+        self.l1aqcSunTrackerCheckBoxUpdate()
         self.l1aqcRotatorAngleCheckBoxUpdate()
 
-        #   Relative SZA
+        #   Relative Solar Azimuth
         l1aqcCleanSunAngleLabel = QtWidgets.QLabel(" Relative Solar Azimuth Filter", self)
         self.l1aqcCleanSunAngleCheckBox = QtWidgets.QCheckBox("", self)
         if int(ConfigFile.settings["bL1aqcCleanSunAngle"]) == 1:
@@ -184,7 +197,7 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l1aqcSunAngleMaxLineEdit.setValidator(doubleValidator)
         self.l1aqcCleanSunAngleCheckBoxUpdate()
 
-        self.l1aqcSolarTrackerCheckBox.clicked.connect(self.l1aqcSolarTrackerCheckBoxUpdate)
+        self.l1aqcSunTrackerCheckBox.clicked.connect(self.l1aqcSunTrackerCheckBoxUpdate)
         self.l1aqcRotatorDelayCheckBox.clicked.connect(self.l1aqcRotatorDelayCheckBoxUpdate)
         self.l1aqcCleanPitchRollCheckBox.clicked.connect(self.l1aqcCleanPitchRollCheckBoxUpdate)
         self.l1aqcRotatorAngleCheckBox.clicked.connect(self.l1aqcRotatorAngleCheckBoxUpdate)
@@ -210,108 +223,56 @@ class ConfigWindow(QtWidgets.QDialog):
 
         l1bSublabel3 = QtWidgets.QLabel("   Ancillary data are required for Zhang glint correction and", self)
         l1bSublabel4 = QtWidgets.QLabel("   can fill in wind for M99 and QC. Select database download:", self)
-        l1bSublabel5 = QtWidgets.QLabel("    (GMAO PROMPTS FOR EARTHDATA LOGIN: <a href=\"https://www.earthdata.nasa.gov/eosdis/science-system-description/eosdis-components/earthdata-login/\">register</a>)", self)
-        l1bSublabel6 = QtWidgets.QLabel("    Fallback values when no model available:", self)
-        l1bSublabel5.setOpenExternalLinks(True)
+
+        # Reset button for ancillary source credentials
+        self.l1bGetAncResetButton = QtWidgets.QPushButton("Reset credentials (GMAO or ECMWF)", self)
+        self.l1bGetAncResetButton.clicked.connect(self.l1bGetAncResetButtonUpdate)
+
+        l1bSublabel6 = QtWidgets.QLabel("    Fallback values when no ancillary or model data available:", self)
+        # l1bSublabel5.setOpenExternalLinks(True)
         self.l1bGetAncCheckBox1 = QtWidgets.QCheckBox("GMAO MERRA2", self)
-        self.l1bGetAncCheckBox2 = QtWidgets.QCheckBox("ECMWF", self)
-        if int(ConfigFile.settings["bL1bGetAnc"]) == 1:
-            self.l1bGetAncCheckBox1.setChecked(True)
-            self.l1bGetAncCheckBox2.setChecked(False)
-        self.l1bGetAncCheckBox1.clicked.connect(self.l1bGetAncCheckBoxUpdate1)
-        if int(ConfigFile.settings["bL1bGetAnc"]) == 2:
-            self.l1bGetAncCheckBox1.setChecked(False)
-            self.l1bGetAncCheckBox2.setChecked(True)
-        self.l1bGetAncCheckBox2.clicked.connect(self.l1bGetAncCheckBoxUpdate2)
+        self.l1bGetAncCheckBox2 = QtWidgets.QCheckBox("ECMWF CAMS", self)
 
+        # If clicked trigger l1bGetAncCheckBoxUpdate
+        self.l1bGetAncCheckBox1.clicked.connect(lambda: self.l1bGetAncCheckBoxUpdate('NASA_Earth_Data'))
+        self.l1bGetAncCheckBox2.clicked.connect(lambda: self.l1bGetAncCheckBoxUpdate('ECMWF_ADS'))
 
-        self.l1bDefaultWindSpeedLabel = QtWidgets.QLabel("          Default Wind Speed (m/s)", self)
+        self.l1bDefaultWindSpeedLabel = QtWidgets.QLabel("          Wind (m/s)", self)
         self.l1bDefaultWindSpeedLineEdit = QtWidgets.QLineEdit(self)
         self.l1bDefaultWindSpeedLineEdit.setText(str(ConfigFile.settings["fL1bDefaultWindSpeed"]))
         self.l1bDefaultWindSpeedLineEdit.setValidator(doubleValidator)
-        self.l1bDefaultAODLabel = QtWidgets.QLabel("          Default AOD(550)", self)
+        self.l1bDefaultAODLabel = QtWidgets.QLabel("          AOD(550)", self)
         self.l1bDefaultAODLineEdit = QtWidgets.QLineEdit(self)
         self.l1bDefaultAODLineEdit.setText(str(ConfigFile.settings["fL1bDefaultAOD"]))
         self.l1bDefaultAODLineEdit.setValidator(doubleValidator)
-        self.l1bDefaultSaltLabel = QtWidgets.QLabel("          Default Salinity (psu)", self)
+        self.l1bDefaultAirTLabel = QtWidgets.QLabel("          AirT[C]", self)
+        self.l1bDefaultAirTLineEdit = QtWidgets.QLineEdit(self)
+        self.l1bDefaultAirTLineEdit.setText(str(ConfigFile.settings["fL1bDefaultAirT"]))
+        self.l1bDefaultAirTLineEdit.setValidator(doubleValidator)        
+        self.l1bDefaultSaltLabel = QtWidgets.QLabel("          Salt[psu]", self)
         self.l1bDefaultSaltLineEdit = QtWidgets.QLineEdit(self)
         self.l1bDefaultSaltLineEdit.setText(str(ConfigFile.settings["fL1bDefaultSalt"]))
         self.l1bDefaultSaltLineEdit.setValidator(doubleValidator)
-        self.l1bDefaultSSTLabel = QtWidgets.QLabel("          Default SST (C)", self)
+        self.l1bDefaultSSTLabel = QtWidgets.QLabel("          SST[C]", self)
         self.l1bDefaultSSTLineEdit = QtWidgets.QLineEdit(self)
         self.l1bDefaultSSTLineEdit.setText(str(ConfigFile.settings["fL1bDefaultSST"]))
         self.l1bDefaultSSTLineEdit.setValidator(doubleValidator)
 
-        l1bCalLabel = QtWidgets.QLabel(" Select Calibration/Characterization/Correction Regime:", self)
-        self.DefaultCalRadioButton = QtWidgets.QRadioButton("Factory Calibration Only")
-        self.DefaultCalRadioButton.setAutoExclusive(False)
-        if ConfigFile.settings["bL1bCal"]==1:
-            self.DefaultCalRadioButton.setChecked(True)
-        self.DefaultCalRadioButton.clicked.connect(self.l1bDefaultCalRadioButtonClicked)
-        DefaultCalRadioButtonTriOS = QtWidgets.QRadioButton("TriOS")
-        DefaultCalRadioButtonSeaBird = QtWidgets.QRadioButton("SeaBird (Non-FRM Class-based)")
-        if CurrentSensor.lower() == 'trios':
-            DefaultCalRadioButtonTriOS.setChecked(True)
-            DefaultCalRadioButtonSeaBird.setChecked(False)
-            DefaultCalRadioButtonSeaBird.setDisabled(True)
-        else:
-            DefaultCalRadioButtonSeaBird.setChecked(True)
-            DefaultCalRadioButtonTriOS.setChecked(False)
-            DefaultCalRadioButtonTriOS.setDisabled(True)
+        # Reset button for ancillary source credentials
+        self.l1bCalCharButton = QtWidgets.QPushButton("Select Cal/Char options", self)
+        self.l1bCalCharButton.clicked.connect(self.l1bCalCharButtonPressed)
 
-
-        self.ClassCalRadioButton = QtWidgets.QRadioButton("FRM Class-based (RadCal required)")
-        self.ClassCalRadioButton.setAutoExclusive(False)
-        if ConfigFile.settings["bL1bCal"]==2:
-            self.ClassCalRadioButton.setChecked(True)
-        self.ClassCalRadioButton.clicked.connect(self.l1bClassCalRadioButtonClicked)
-        self.addClassFilesButton = QtWidgets.QPushButton("Add RadCals:")
-        self.addClassFilesButton.clicked.connect(self.addClassFilesButtonClicked)
-        self.classFilesLineEdit = QtWidgets.QLineEdit(self)
-        self.classFilesLineEdit.setDisabled(True)
-
-        self.FullCalRadioButton = QtWidgets.QRadioButton("FRM Full Characterization:")
-        self.FullCalRadioButton.setAutoExclusive(False)
-        self.l1bFRMRadio1 = QtWidgets.QRadioButton("Local", self)
-        self.addFullFilesButton = QtWidgets.QPushButton("Add Files:")
-        self.addFullFilesButton.clicked.connect(self.addFullFilesButtonClicked)
-        self.fullFilesLineEdit = QtWidgets.QLineEdit(self)
-        self.fullFilesLineEdit.setDisabled(True)
-
-        self.l1bFRMRadio2 = QtWidgets.QRadioButton("FidRadDB", self)
-        if ConfigFile.settings['FidRadDB']:
-            self.l1bFRMRadio1.setChecked(False)
-            self.l1bFRMRadio2.setChecked(True)
-        else:
-            self.l1bFRMRadio1.setChecked(True)
-            self.l1bFRMRadio2.setChecked(False)
-
-        if ConfigFile.settings["bL1bCal"]==3:
-            self.FullCalRadioButton.setChecked(True)
-            if int(ConfigFile.settings["FidRadDB"]) == 0:
-                self.l1bFRMRadio1.setChecked(True)
-                self.l1bFRMRadio2.setChecked(False)
-            elif int(ConfigFile.settings["FidRadDB"]) == 1:
-                self.l1bFRMRadio1.setChecked(False)
-                self.l1bFRMRadio2.setChecked(True)
-        self.FullCalRadioButton.clicked.connect(self.l1bFullCalRadioButtonClicked)
-
-        self.FullCalDir = ConfigFile.settings['FullCalDir']
-        self.l1bFRMRadio1.clicked.connect(self.l1bFRMRadioUpdate1)
-        self.l1bFRMRadio2.clicked.connect(self.l1bFRMRadioUpdate2)
-
-        self.l1bCalStatusUpdate()
-
-        l1bInterpIntervalLabel = QtWidgets.QLabel("    Interpolation Interval (nm)", self)
-        self.l1bInterpIntervalLineEdit = QtWidgets.QLineEdit(self)
-        self.l1bInterpIntervalLineEdit.setText(str(ConfigFile.settings["fL1bInterpInterval"]))
-        self.l1bInterpIntervalLineEdit.setValidator(doubleValidator)
-        self.l1bInterpIntervalLineEdit.setDisabled(True) # No longer an option; not accomodated in uncertainties
+        # l1bInterpIntervalLabel = QtWidgets.QLabel("    Interpolation Interval (nm)", self)
+        # self.l1bInterpIntervalLineEdit = QtWidgets.QLineEdit(self)
+        # self.l1bInterpIntervalLineEdit.setText(str(ConfigFile.settings["fL1bInterpInterval"]))
+        # self.l1bInterpIntervalLineEdit.setValidator(doubleValidator)
+        # self.l1bInterpIntervalLineEdit.setDisabled(True) # No longer an option; not accomodated in uncertainties
+        # l1bInterpIntervalLabel.setDisabled(True)
 
         # l1bPlotTimeInterpLabel = QtWidgets.QLabel(f"    Generate Plots ({os.path.split(MainConfig.settings['outDir'])[-1]}/Plots/L1B_Interp/)", self)
-        l1bPlotTimeInterpLabel = QtWidgets.QLabel(f"    Generate Interpolation Plots", self)
+        l1bPlotTimeInterpLabel = QtWidgets.QLabel("    Generate Interpolation Plots", self)
         self.l1bPlotTimeInterpCheckBox = QtWidgets.QCheckBox("", self)
-        if int(ConfigFile.settings["bL1bPlotTimeInterp"]) == 1:
+        if ConfigFile.settings["bL1bPlotTimeInterp"]:
             self.l1bPlotTimeInterpCheckBox.setChecked(True)
         self.l1bPlotTimeInterpCheckBox.clicked.connect(self.l1bPlotTimeInterpCheckBoxUpdate)
 
@@ -378,7 +339,7 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l1bqcSpecQualityCheckPlotBoxUpdate()
 
         # L1BQC Meteorology Flags
-        l1bqcQualityFlagLabel = QtWidgets.QLabel("   Enable Meteorological Filters (Experimental)", self)
+        l1bqcQualityFlagLabel = QtWidgets.QLabel("   Enable Meteorological Flags (Experimental/Non-exclusive)", self)
         self.l1bqcQualityFlagCheckBox = QtWidgets.QCheckBox("", self)
         if int(ConfigFile.settings["bL1bqcEnableQualityFlags"]) == 1:
             self.l1bqcQualityFlagCheckBox.setChecked(True)
@@ -415,6 +376,20 @@ class ConfigWindow(QtWidgets.QDialog):
         l2Sublabel2 = QtWidgets.QLabel("  correction, residual correction, QC,", self)
         l2Sublabel3 = QtWidgets.QLabel("  satellite convolution, OC product generation,", self)
         l2Sublabel4 = QtWidgets.QLabel("  SeaBASS file output.", self)
+
+        # L2 Sensor Viewing Angle
+        l2SVALabel = QtWidgets.QLabel("Sensor Viewing Angle", self)
+        self.SVARadioButtonDefault = QtWidgets.QRadioButton("40°")
+        self.SVARadioButtonDefault.setAutoExclusive(False)
+        if ConfigFile.settings["fL2SVA"]==40:
+            self.SVARadioButtonDefault.setChecked(True)
+        self.SVARadioButtonDefault.clicked.connect(self.l2SVARadioButtonDefaultClicked)
+
+        self.SVARadioButton30 = QtWidgets.QRadioButton("30°")
+        self.SVARadioButton30.setAutoExclusive(False)
+        if ConfigFile.settings["fL2SVA"]==30:
+            self.SVARadioButton30.setChecked(True)
+        self.SVARadioButton30.clicked.connect(self.l2SVARadioButton30Clicked)
 
         #   L2 Ensembles
         l2ensLabel = QtWidgets.QLabel("L2 Ensembles", self)
@@ -460,6 +435,34 @@ class ConfigWindow(QtWidgets.QDialog):
             self.RhoRadioButtonZhang.setChecked(True)
         self.RhoRadioButtonZhang.clicked.connect(self.l2RhoRadioButtonZhangClicked)
 
+        # Initialization of ancillary buttons NB: placed here because must come after Zhang button definition!
+        # NB : the following are NOT "elif" blocks because bL1bGetAnc can change after each block.
+
+        # Case: NASA_Earth_Data/GMAO-MERRA-2 (tick box before window pops up)
+        if int(ConfigFile.settings["bL1bGetAnc"]) == 1:
+            self.l1bGetAncCheckBox1.setChecked(True)
+            self.l1bGetAncCheckBox2.setChecked(False)
+            GetAnc_credentials.credentialsWindow('NASA_Earth_Data')
+            self.l1bGetAncUntickIfNoCredentials('NASA_Earth_Data')
+
+        # Case: ECMWF ADS (tick box before window pops up)
+        if int(ConfigFile.settings["bL1bGetAnc"]) == 2:
+            self.l1bGetAncCheckBox1.setChecked(False)
+            self.l1bGetAncCheckBox2.setChecked(True)
+            GetAnc_credentials.credentialsWindow('ECMWF_ADS')
+            self.l1bGetAncUntickIfNoCredentials('ECMWF_ADS')
+
+        # Case: NO ancillary selected (disable Zhang before config window pops-up)
+        if int(ConfigFile.settings["bL1bGetAnc"]) == 0:
+            self.l1bGetAncResetButton.setDisabled(True)
+            self.RhoRadioButtonZhang.setChecked(0)
+            self.RhoRadioButtonZhang.setDisabled(1)
+            self.RhoRadioButtonDefault.setChecked(1)
+
+            ConfigFile.settings["bL23CRho"] = 0
+            ConfigFile.settings["bL2ZhangRho"] = 0
+            ConfigFile.settings["bL2DefaultRho"] = 1
+
         self.RhoRadoButton3C = QtWidgets.QRadioButton("Groetsch et al. (2017)")
         self.RhoRadoButton3C.setAutoExclusive(False)
         self.RhoRadoButton3C.setDisabled(True)
@@ -488,12 +491,12 @@ class ConfigWindow(QtWidgets.QDialog):
         if ConfigFile.settings["bL2SimSpecNIRCorrection"] == 1:
             self.SimSpecNIRRadioButton.setChecked(True)
         self.SimSpecNIRRadioButton.clicked.connect(self.l2SimSpecNIRRadioButtonClicked)
-        self.YourNIRRadioButton = QtWidgets.QRadioButton("   Your NIR Residual (2023) (universal)")
-        self.YourNIRRadioButton.setAutoExclusive(False)
+        # self.YourNIRRadioButton = QtWidgets.QRadioButton("   Your NIR Residual (2023) (universal)")
+        # self.YourNIRRadioButton.setAutoExclusive(False)
         # if ConfigFile.settings["bL2YourNIRCorrection"] == 1:
         #     self.YourNIRRadioButton.setChecked(True)
         # self.YourNIRRadioButton.clicked.connect(self.l2YourNIRRadioButtonClicked)
-        self.YourNIRRadioButton.setDisabled(True)
+        # self.YourNIRRadioButton.setDisabled(True)
 
         self.l2NIRCorrectionCheckBoxUpdate()
 
@@ -511,14 +514,22 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l2BRDFCheckBox = QtWidgets.QCheckBox("", self)
         if int(ConfigFile.settings["bL2BRDF"]) == 1:
             self.l2BRDFCheckBox.setChecked(True)
+
         self.l2BRDF_fQLabel = QtWidgets.QLabel("Morel R.f/Q", self)
         self.l2BRDF_fQCheckBox = QtWidgets.QCheckBox("", self)
         if int(ConfigFile.settings["bL2BRDF_fQ"]) == 1:
             self.l2BRDF_fQCheckBox.setChecked(True)
+
         self.l2BRDF_IOPLabel = QtWidgets.QLabel("Lee IOP", self)
         self.l2BRDF_IOPCheckBox = QtWidgets.QCheckBox("", self)
         if int(ConfigFile.settings["bL2BRDF_IOP"]) == 1:
             self.l2BRDF_IOPCheckBox.setChecked(True)
+
+        self.l2BRDF_O23Label = QtWidgets.QLabel("Pitarch IOP [beta]", self)
+        self.l2BRDF_O23CheckBox = QtWidgets.QCheckBox("", self)
+        if int(ConfigFile.settings["bL2BRDF_O23"]) == 1:
+            self.l2BRDF_O23CheckBox.setChecked(True)
+
         self.l2BRDFCheckBoxUpdate()
 
 
@@ -559,11 +570,6 @@ class ConfigWindow(QtWidgets.QDialog):
         if int(ConfigFile.settings["bL2WeightSentinel3B"]) == 1:
             self.l2WeightSentinel3BCheckBox.setChecked(True)
 
-        l2WeightUncertaintiesLabel = QtWidgets.QLabel("Convolution uncertainties", self)
-        self.l2WeightUncertaintiesCheckBox = QtWidgets.QCheckBox('',self)
-        if int(ConfigFile.settings["bL2WeightUncertainties"]) == 1:
-            self.l2WeightUncertaintiesCheckBox.setChecked(True)
-
         #   Plots
         l2PlotsLabel = QtWidgets.QLabel("Generate Spectral Plots", self)
         l2PlotRrsLabel = QtWidgets.QLabel("Rrs", self)
@@ -591,6 +597,12 @@ class ConfigWindow(QtWidgets.QDialog):
         if int(ConfigFile.settings["bL2PlotLt"]) == 1:
             self.l2PlotLtCheckBox.setChecked(True)
 
+        l2UncertaintyBreakdownPlotsLabel = QtWidgets.QLabel("Unc. Plots (class-based only)", self)
+        # l2UncertaintyBreakdownPlotLabel = QtWidgets.QLabel(" ", self)
+        self.l2UncertaintyBreakdownPlotCheckBox = QtWidgets.QCheckBox("", self)
+        if ConfigFile.settings["bL2UncertaintyBreakdownPlot"]:
+            self.l2UncertaintyBreakdownPlotCheckBox.setChecked(True)
+
         self.l2StationsCheckBox.clicked.connect(self.l2StationsCheckBoxUpdate)
         self.l2EnablePercentLtCheckBox.clicked.connect(self.l2EnablePercentLtCheckBoxUpdate)
         self.l2NIRCorrectionCheckBox.clicked.connect(self.l2NIRCorrectionCheckBoxUpdate)
@@ -598,6 +610,7 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l2BRDFCheckBox.clicked.connect(self.l2BRDFCheckBoxUpdate)
         self.l2BRDF_fQCheckBox.clicked.connect(self.l2BRDF_fQCheckBoxUpdate)
         self.l2BRDF_IOPCheckBox.clicked.connect(self.l2BRDF_IOPCheckBoxUpdate)
+        self.l2BRDF_O23CheckBox.clicked.connect(self.l2BRDF_O23CheckBoxUpdate)
 
         self.l2OCproducts = QtWidgets.QPushButton("Derived L2 Ocean Color Products", self)
         self.l2OCproducts.clicked.connect(self.l2OCproductsButtonPressed)
@@ -676,6 +689,12 @@ class ConfigWindow(QtWidgets.QDialog):
         szaHBox.addWidget(self.l1aCleanSZAMaxLineEdit)
         VBox1.addLayout(szaHBox)
 
+        # Caps-on darks option
+        codHBox = QtWidgets.QHBoxLayout()
+        codHBox.addWidget(self.l1aCODLabel)
+        codHBox.addWidget(self.l1aCODCheckBox)
+        VBox1.addLayout(codHBox)
+
         # L1AQC
         VBox1.addWidget(l1aqcLabel)
         VBox1.addWidget(l1aqcSublabel)
@@ -690,11 +709,11 @@ class ConfigWindow(QtWidgets.QDialog):
         PitchRollHBox2.addWidget(self.l1aqcPitchRollPitchLineEdit)
         VBox1.addLayout(PitchRollHBox2)
 
-        #   SolarTracker
-        SolarTrackerHBox = QtWidgets.QHBoxLayout()
-        SolarTrackerHBox.addWidget(self.l1aqcSolarTrackerLabel)
-        SolarTrackerHBox.addWidget(self.l1aqcSolarTrackerCheckBox)
-        VBox1.addLayout(SolarTrackerHBox)
+        #   SunTracker
+        SunTrackerHBox = QtWidgets.QHBoxLayout()
+        SunTrackerHBox.addWidget(self.l1aqcSunTrackerLabel)
+        SunTrackerHBox.addWidget(self.l1aqcSunTrackerCheckBox)
+        VBox1.addLayout(SunTrackerHBox)
 
         #   L1AQC Rotator Home
         RotHomeAngleHBox = QtWidgets.QHBoxLayout()
@@ -721,35 +740,32 @@ class ConfigWindow(QtWidgets.QDialog):
         RotMaxHBox.addWidget(self.l1aqcRotatorAngleMaxLineEdit)
         VBox1.addLayout(RotMaxHBox)
 
-        #   L1AQC Relative SZA
-        CleanSunAngleHBox = QtWidgets.QHBoxLayout()
-        CleanSunAngleHBox.addWidget(l1aqcCleanSunAngleLabel)
-        CleanSunAngleHBox.addWidget(self.l1aqcCleanSunAngleCheckBox)
-        VBox1.addLayout(CleanSunAngleHBox)
-        SunAngleMinHBox = QtWidgets.QHBoxLayout()
-        SunAngleMinHBox.addWidget(self.l1aqcSunAngleMinLabel)
-        SunAngleMinHBox.addWidget(self.l1aqcSunAngleMinLineEdit)
-        VBox1.addLayout(SunAngleMinHBox)
-        SunAngleMaxHBox = QtWidgets.QHBoxLayout()
-        SunAngleMaxHBox.addWidget(self.l1aqcSunAngleMaxLabel)
-        SunAngleMaxHBox.addWidget(self.l1aqcSunAngleMaxLineEdit)
-        VBox1.addLayout(SunAngleMaxHBox)
-
-        #   L1AQC Deglitcher
-        deglitchHBox = QtWidgets.QHBoxLayout()
-        deglitchHBox.addWidget(self.l1aqcDeglitchLabel)
-        deglitchHBox.addWidget(self.l1aqcDeglitchCheckBox)
-        VBox1.addLayout(deglitchHBox)
-        #       L1AQC Anomaly Launcher
-        # VBox1.addWidget(l1aqcAnomalySublabel1)
-        # VBox1.addWidget(l1aqcAnomalySublabel2)
-        VBox1.addWidget(self.l1aqcAnomalyButton)
-
         VBox1.addStretch()
 
         # Second Vertical Box
         VBox2 = QtWidgets.QVBoxLayout()
         # VBox2.setAlignment(QtCore.Qt.AlignBottom)
+
+        #   L1AQC Relative Solar Azimuth
+        CleanSunAngleHBox = QtWidgets.QHBoxLayout()
+        CleanSunAngleHBox.addWidget(l1aqcCleanSunAngleLabel)
+        CleanSunAngleHBox.addWidget(self.l1aqcCleanSunAngleCheckBox)
+        VBox2.addLayout(CleanSunAngleHBox)
+        SunAngleMinHBox = QtWidgets.QHBoxLayout()
+        SunAngleMinHBox.addWidget(self.l1aqcSunAngleMinLabel)
+        SunAngleMinHBox.addWidget(self.l1aqcSunAngleMinLineEdit)
+        VBox2.addLayout(SunAngleMinHBox)
+        SunAngleMaxHBox = QtWidgets.QHBoxLayout()
+        SunAngleMaxHBox.addWidget(self.l1aqcSunAngleMaxLabel)
+        SunAngleMaxHBox.addWidget(self.l1aqcSunAngleMaxLineEdit)
+        VBox2.addLayout(SunAngleMaxHBox)
+
+        #   L1AQC Deglitcher
+        deglitchHBox = QtWidgets.QHBoxLayout()
+        deglitchHBox.addWidget(self.l1aqcDeglitchLabel)
+        deglitchHBox.addWidget(self.l1aqcDeglitchCheckBox)
+        VBox2.addLayout(deglitchHBox)
+        VBox2.addWidget(self.l1aqcAnomalyButton)
 
         # L1B
         VBox2.addWidget(l1bLabel)
@@ -764,71 +780,38 @@ class ConfigWindow(QtWidgets.QDialog):
         # l1bGetAncHBox1.addWidget(l1bSublabel4)
         l1bGetAncHBox1.addWidget(self.l1bGetAncCheckBox2)
         VBox2.addLayout(l1bGetAncHBox1)
-        VBox2.addWidget(l1bSublabel5)
+        VBox2.addWidget(self.l1bGetAncResetButton)
         VBox2.addWidget(l1bSublabel6)
 
         #   Default Wind
-        WindSpeedHBox2 = QtWidgets.QHBoxLayout()
-        WindSpeedHBox2.addWidget(self.l1bDefaultWindSpeedLabel)
-        WindSpeedHBox2.addWidget(self.l1bDefaultWindSpeedLineEdit)
-        VBox2.addLayout(WindSpeedHBox2)
+        WindSpeedHBox = QtWidgets.QHBoxLayout()
+        WindSpeedHBox.addWidget(self.l1bDefaultWindSpeedLabel)
+        WindSpeedHBox.addWidget(self.l1bDefaultWindSpeedLineEdit)
+        VBox2.addLayout(WindSpeedHBox)
         #   Default AOD
-        AODHBox2 = QtWidgets.QHBoxLayout()
-        AODHBox2.addWidget(self.l1bDefaultAODLabel)
-        AODHBox2.addWidget(self.l1bDefaultAODLineEdit)
-        VBox2.addLayout(AODHBox2)
+        AirHBox = QtWidgets.QHBoxLayout()
+        AirHBox.addWidget(self.l1bDefaultAODLabel)
+        AirHBox.addWidget(self.l1bDefaultAODLineEdit)
+        #   Default AirT
+        AirHBox.addWidget(self.l1bDefaultAirTLabel)
+        AirHBox.addWidget(self.l1bDefaultAirTLineEdit)
+        VBox2.addLayout(AirHBox)
         #   Default Salt
-        SaltHBox2 = QtWidgets.QHBoxLayout()
-        SaltHBox2.addWidget(self.l1bDefaultSaltLabel)
-        SaltHBox2.addWidget(self.l1bDefaultSaltLineEdit)
-        VBox2.addLayout(SaltHBox2)
+        SeaHBox = QtWidgets.QHBoxLayout()
+        SeaHBox.addWidget(self.l1bDefaultSaltLabel)
+        SeaHBox.addWidget(self.l1bDefaultSaltLineEdit)
         #   Default SST
-        SSTHBox2 = QtWidgets.QHBoxLayout()
-        SSTHBox2.addWidget(self.l1bDefaultSSTLabel)
-        SSTHBox2.addWidget(self.l1bDefaultSSTLineEdit)
-        VBox2.addLayout(SSTHBox2)
+        SeaHBox.addWidget(self.l1bDefaultSSTLabel)
+        SeaHBox.addWidget(self.l1bDefaultSSTLineEdit)
+        VBox2.addLayout(SeaHBox)        
 
-        #   Instrument/Cal Files
-        VBox2.addWidget(l1bCalLabel)
-        # CalHBox2 = QtWidgets.QHBoxLayout()
-        # CalHBox2.addWidget(self.DefaultCalRadioButton)
-        VBox2.addWidget(self.DefaultCalRadioButton)
-        CalHBox2 = QtWidgets.QHBoxLayout()
-        CalHBox2.addStretch()
-        CalHBox2.addWidget(DefaultCalRadioButtonTriOS)
-        CalHBox2.addWidget(DefaultCalRadioButtonSeaBird)
-        VBox2.addLayout(CalHBox2)
-
-        VBox2.addWidget(self.ClassCalRadioButton)
-        CalHBox3 = QtWidgets.QHBoxLayout()
-        CalHBox3.addStretch()
-        CalHBox3.addWidget(self.addClassFilesButton)
-        CalHBox3.addWidget(self.classFilesLineEdit)
-        CalHBox3.addStretch()
-        VBox2.addLayout(CalHBox3)
-        # VBox2.addLayout(CalHBox2)
-
-        VBox2.addWidget(self.FullCalRadioButton)
-        CalHBox4 = QtWidgets.QHBoxLayout()
-        CalHBox4.addStretch()
-        CalHBox4.addWidget(self.l1bFRMRadio1)
-        CalHBox4.addWidget(self.addFullFilesButton)
-        CalHBox4.addWidget(self.fullFilesLineEdit)
-        CalHBox4.addStretch()
-        # CalHBox4.addStretch(1)
-        VBox2.addLayout(CalHBox4)
-        CalHBox5 = QtWidgets.QHBoxLayout()
-        CalHBox5.addStretch()
-        CalHBox5.addWidget(self.l1bFRMRadio2)
-        CalHBox5.addStretch()
-        VBox2.addLayout(CalHBox5)
-
+        VBox2.addWidget(self.l1bCalCharButton)
 
         #   Interpolation interval (wavelength)
-        interpHBox = QtWidgets.QHBoxLayout()
-        interpHBox.addWidget(l1bInterpIntervalLabel)
-        interpHBox.addWidget(self.l1bInterpIntervalLineEdit)
-        VBox2.addLayout(interpHBox)
+        # interpHBox = QtWidgets.QHBoxLayout()
+        # interpHBox.addWidget(l1bInterpIntervalLabel)
+        # interpHBox.addWidget(self.l1bInterpIntervalLineEdit)
+        # VBox2.addLayout(interpHBox)
 
         l1bPlotTimeInterpHBox = QtWidgets.QHBoxLayout()
         l1bPlotTimeInterpHBox.addWidget(l1bPlotTimeInterpLabel)
@@ -932,6 +915,13 @@ class ConfigWindow(QtWidgets.QDialog):
         VBox3.addWidget(l2Sublabel3)
         VBox3.addWidget(l2Sublabel4)
 
+        # Lt SVA
+        SVAHBox = QtWidgets.QHBoxLayout()
+        SVAHBox.addWidget(l2SVALabel)
+        SVAHBox.addWidget(self.SVARadioButtonDefault)
+        SVAHBox.addWidget(self.SVARadioButton30)
+        VBox3.addLayout(SVAHBox)
+
         #   L2 Ensembles
         VBox3.addWidget(l2ensLabel)
 
@@ -977,7 +967,7 @@ class ConfigWindow(QtWidgets.QDialog):
         VBox3.addLayout(NIRCorrectionHBox)
         VBox3.addWidget(self.SimpleNIRRadioButton)
         VBox3.addWidget(self.SimSpecNIRRadioButton)
-        VBox3.addWidget(self.YourNIRRadioButton)
+        # VBox3.addWidget(self.YourNIRRadioButton)
 
         VBox3.addSpacing(5)
 
@@ -1003,6 +993,8 @@ class ConfigWindow(QtWidgets.QDialog):
         BRDFHBox2.addWidget(self.l2BRDF_fQCheckBox)
         BRDFHBox2.addWidget(self.l2BRDF_IOPLabel)
         BRDFHBox2.addWidget(self.l2BRDF_IOPCheckBox)
+        BRDFHBox2.addWidget(self.l2BRDF_O23Label)
+        BRDFHBox2.addWidget(self.l2BRDF_O23CheckBox)
         BRDFVBox.addLayout(BRDFHBox2)
         VBox4.addLayout(BRDFVBox)
 
@@ -1030,10 +1022,10 @@ class ConfigWindow(QtWidgets.QDialog):
         l2WeightHBox2.addWidget(self.l2WeightVIIRSJCheckBox)
         VBox4.addLayout(l2WeightHBox2)
         VBox4.addWidget(l2WeightMODISALabel2)
-        l2WeightHBox3 = QtWidgets.QHBoxLayout()
-        l2WeightHBox3.addWidget(l2WeightUncertaintiesLabel)
-        l2WeightHBox3.addWidget(self.l2WeightUncertaintiesCheckBox)
-        VBox4.addLayout(l2WeightHBox3)
+        # l2WeightHBox3 = QtWidgets.QHBoxLayout()
+        # l2WeightHBox3.addWidget(l2WeightUncertaintiesLabel)
+        # l2WeightHBox3.addWidget(self.l2WeightUncertaintiesCheckBox)
+        # VBox4.addLayout(l2WeightHBox3)
 
         VBox4.addSpacing(5)
 
@@ -1052,6 +1044,12 @@ class ConfigWindow(QtWidgets.QDialog):
         l2PlotHBox.addWidget(l2PlotLtLabel)
         l2PlotHBox.addWidget(self.l2PlotLtCheckBox)
         VBox4.addLayout(l2PlotHBox)
+
+        VBox4.addWidget(l2UncertaintyBreakdownPlotsLabel)
+        l2PlotUncHBox = QtWidgets.QHBoxLayout()
+        l2PlotUncHBox.addSpacing(45)
+        l2PlotUncHBox.addWidget(self.l2UncertaintyBreakdownPlotCheckBox)
+        VBox4.addLayout(l2PlotUncHBox)
 
         VBox4.addSpacing(5)
 
@@ -1152,8 +1150,13 @@ class ConfigWindow(QtWidgets.QDialog):
     def deleteCalibrationFileButtonPressed(self):
         print("CalibrationEditWindow - Remove Calibration File Pressed")
         cal_fp = os.path.join(self.calibrationPath,self.calibrationFileComboBox.currentText())
-        if os.path.exists(cal_fp):  # if cal file removed from empty then does not crash.
-            os.remove(cal_fp)
+
+        if os.path.exists(cal_fp) and cal_fp != '/':  # if cal file removed from empty then does not crash.
+            try:
+                os.remove(cal_fp)
+            except IsADirectoryError:
+                print(f"cannot delete directory \"{cal_fp}\"")
+                pass
 
     def getCalibrationSettings(self):
         print("CalibrationEditWindow - getCalibrationSettings")
@@ -1176,6 +1179,21 @@ class ConfigWindow(QtWidgets.QDialog):
         ConfigFile.settings["SensorType"] = sensor
 
         self.l1aqcDeglitchCheckBoxUpdate()
+        CurrentSensor = ConfigFile.settings["SensorType"]
+        if CurrentSensor.lower() == "seabird":
+            comboList = ['ShutterLight','ShutterDark','Not Required']
+            self.calibrationFrameTypeComboBox.clear()
+            self.calibrationFrameTypeComboBox.addItems(comboList)            
+
+        elif CurrentSensor.lower() == "trios":
+            comboList = ['LI','LT','ES']
+            self.calibrationFrameTypeComboBox.clear()
+            self.calibrationFrameTypeComboBox.addItems(comboList)
+
+        elif CurrentSensor.lower() == "dalec":
+            comboList = ['not required']
+            self.calibrationFrameTypeComboBox.clear()
+            self.calibrationFrameTypeComboBox.addItems(comboList)
 
     def setCalibrationSettings(self):
         print("CalibrationEditWindow - setCalibrationSettings")
@@ -1188,8 +1206,7 @@ class ConfigWindow(QtWidgets.QDialog):
         print("CalibrationEditWindow - Calibration File Changed")
         print("Current index",i,"selection changed ", self.calibrationFileComboBox.currentText())
         calFileName = self.calibrationFileComboBox.currentText()
-        calDir = ConfigFile.getCalibrationDirectory()
-        calPath = os.path.join(calDir, calFileName)
+        calPath = os.path.join(self.calibrationPath, calFileName)
         if os.path.isfile(calPath):
             self.getCalibrationSettings()
             self.calibrationEnabledCheckBox.setEnabled(True)
@@ -1211,17 +1228,35 @@ class ConfigWindow(QtWidgets.QDialog):
     def l1aCleanSZACheckBoxUpdate(self):
         print("ConfigWindow - l1aCleanSZAAngleCheckBoxUpdate")
 
-        disabled = (not self.l1aCleanSZACheckBox.isChecked())
+        disabled = not self.l1aCleanSZACheckBox.isChecked()
         self.l1aCleanSZAMaxLineEdit.setDisabled(disabled)
         if disabled:
             ConfigFile.settings["bL1aCleanSZA"] = 0
         else:
             ConfigFile.settings["bL1aCleanSZA"] = 1
 
-    def l1aqcSolarTrackerCheckBoxUpdate(self):
-        print("ConfigWindow - l1aqcSolarTrackerCheckBoxUpdate")
+    def l1aCODCheckBoxUpdate(self):
+        print("ConfigWindow - l1aCODAngleCheckBoxUpdate")
 
-        disabled = (not self.l1aqcSolarTrackerCheckBox.isChecked())
+        sensor = self.sensorTypeComboBox.currentText()
+        if sensor.lower() == 'trios':
+            # self.l1aCODCheckBox.setChecked(False)
+            self.l1aCODCheckBox.setEnabled(True)
+            self.l1aCODLabel.setEnabled(True)
+        else:
+            self.l1aCODCheckBox.setEnabled(False)
+            self.l1aCODLabel.setEnabled(False)
+
+        disabled = not self.l1aCODCheckBox.isChecked()
+        if disabled:
+            ConfigFile.settings["bL1aCOD"] = 0
+        else:
+            ConfigFile.settings["bL1aCOD"] = 1
+
+    def l1aqcSunTrackerCheckBoxUpdate(self):
+        print("ConfigWindow - l1aqcSunTrackerCheckBoxUpdate")
+
+        disabled = not self.l1aqcSunTrackerCheckBox.isChecked()
         self.l1aCleanSZAMaxLabel.setDisabled(disabled)
         self.l1aCleanSZACheckBox.setDisabled(disabled)
         self.l1aCleanSZAMaxLineEdit.setDisabled(disabled)
@@ -1236,17 +1271,17 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l1aqcRotatorAngleMaxLineEdit.setDisabled(disabled)
         if disabled:
             ConfigFile.settings["fL1aCleanSZAMax"] = 90
-            ConfigFile.settings["bL1aqcSolarTracker"] = 0
+            ConfigFile.settings["bL1aqcSunTracker"] = 0
             ConfigFile.settings["bL1aqcRotatorDelay"] = 0
             self.l1aqcRotatorDelayCheckBox.setChecked(False)
             self.l1aqcRotatorAngleCheckBox.setChecked(False)
         else:
-            ConfigFile.settings["bL1aqcSolarTracker"] = 1
+            ConfigFile.settings["bL1aqcSunTracker"] = 1
 
     def l1aqcRotatorDelayCheckBoxUpdate(self):
         print("ConfigWindow - l1aqcRotatorDelayCheckBoxUpdate")
 
-        disabled = (not self.l1aqcRotatorDelayCheckBox.isChecked())
+        disabled = not self.l1aqcRotatorDelayCheckBox.isChecked()
         self.l1aqcRotatorDelayLineEdit.setDisabled(disabled)
         if disabled:
             ConfigFile.settings["bL1aqcRotatorDelay"] = 0
@@ -1256,7 +1291,7 @@ class ConfigWindow(QtWidgets.QDialog):
     def l1aqcCleanPitchRollCheckBoxUpdate(self):
         print("ConfigWindow - l1aqcCleanPitchRollCheckBoxUpdate")
 
-        disabled = (not self.l1aqcCleanPitchRollCheckBox.isChecked())
+        disabled = not self.l1aqcCleanPitchRollCheckBox.isChecked()
         self.l1aqcPitchRollPitchLabel.setDisabled(disabled)
         self.l1aqcPitchRollPitchLineEdit.setDisabled(disabled)
         if disabled:
@@ -1267,7 +1302,7 @@ class ConfigWindow(QtWidgets.QDialog):
     def l1aqcRotatorAngleCheckBoxUpdate(self):
         print("ConfigWindow - l1aqcRotatorAngleCheckBoxUpdate")
 
-        disabled = (not self.l1aqcRotatorAngleCheckBox.isChecked())
+        disabled = not self.l1aqcRotatorAngleCheckBox.isChecked()
         self.l1aqcRotatorAngleMinLabel.setDisabled(disabled)
         self.l1aqcRotatorAngleMinLineEdit.setDisabled(disabled)
         self.l1aqcRotatorAngleMaxLabel.setDisabled(disabled)
@@ -1280,7 +1315,7 @@ class ConfigWindow(QtWidgets.QDialog):
     def l1aqcCleanSunAngleCheckBoxUpdate(self):
         print("ConfigWindow - l1aqcCleanSunAngleCheckBoxUpdate")
 
-        disabled = (not self.l1aqcCleanSunAngleCheckBox.isChecked())
+        disabled = not self.l1aqcCleanSunAngleCheckBox.isChecked()
         self.l1aqcSunAngleMinLabel.setDisabled(disabled)
         self.l1aqcSunAngleMinLineEdit.setDisabled(disabled)
         self.l1aqcSunAngleMaxLabel.setDisabled(disabled)
@@ -1297,7 +1332,7 @@ class ConfigWindow(QtWidgets.QDialog):
         sensor = self.sensorTypeComboBox.currentText()
         ConfigFile.settings["SensorType"] = sensor
 
-        if sensor.lower() == 'trios':
+        if sensor.lower() == 'trios' or sensor.lower() == 'dalec':
             self.l1aqcDeglitchCheckBox.setChecked(False)
             self.l1aqcDeglitchCheckBox.setEnabled(False)
             self.l1aqcDeglitchLabel.setEnabled(False)
@@ -1307,11 +1342,11 @@ class ConfigWindow(QtWidgets.QDialog):
             self.l1aqcDeglitchLabel.setEnabled(True)
             self.l1aqcAnomalyButton.setEnabled(True)
 
-        disabled = (not self.l1aqcDeglitchCheckBox.isChecked())
+        disabled = not self.l1aqcDeglitchCheckBox.isChecked()
         if disabled:
-            ConfigFile.settings["bL1dDeglitch"] = 0
+            ConfigFile.settings["bL1aqcDeglitch"] = 0
         else:
-            ConfigFile.settings["bL1dDeglitch"] = 1
+            ConfigFile.settings["bL1aqcDeglitch"] = 1
 
     def l1aqcAnomalyButtonPressed(self):
         print("CalibrationEditWindow - Launching anomaly analysis module")
@@ -1319,208 +1354,119 @@ class ConfigWindow(QtWidgets.QDialog):
         anomAnalDialog = AnomAnalWindow(self.inputDirectory, self)
         anomAnalDialog.show()
 
-    def l1bCalStatusUpdate(self):
-        # Enable/disable features based on regime selected
-        if ConfigFile.settings["bL1bCal"] == 1:
-            self.DefaultCalRadioButton.setChecked(True)
-            self.ClassCalRadioButton.setChecked(False)
-            self.FullCalRadioButton.setChecked(False)
+    def l1bGetAncUntickIfNoCredentials(self,ancillarySource):
+        '''
+        ancillarySource: a string, either 'NASA_Earth_Data' or 'ECMWF_ADS'
 
-            self.addClassFilesButton.setDisabled(True)
-            self.l1bFRMRadio1.setDisabled(True)
-            self.l1bFRMRadio2.setDisabled(True)
-            self.addFullFilesButton.setDisabled(True)
-        elif ConfigFile.settings["bL1bCal"] == 2:
-            self.DefaultCalRadioButton.setChecked(False)
-            self.ClassCalRadioButton.setChecked(True)
-            self.FullCalRadioButton.setChecked(False)
-
-            self.addClassFilesButton.setDisabled(False)
-            self.l1bFRMRadio1.setDisabled(True)
-            self.l1bFRMRadio2.setDisabled(True)
-            self.addFullFilesButton.setDisabled(True)
-
-        elif ConfigFile.settings["bL1bCal"] == 3:
-            self.DefaultCalRadioButton.setChecked(False)
-            self.ClassCalRadioButton.setChecked(False)
-            self.FullCalRadioButton.setChecked(True)
-
-            self.addClassFilesButton.setDisabled(True)
-            self.l1bFRMRadio1.setDisabled(False)
-            self.l1bFRMRadio2.setDisabled(False)
-            self.addFullFilesButton.setDisabled(False)
-
-        # Check for RadCal and Full-char files:
-        failCode = 0
-        # Confirm 3 RADCAL files found in destination
-        files = glob.glob(os.path.join(self.calibrationPath, '*RADCAL*.[tT][xX][tT]'))
-        if len(files) != 3:
-            failCode +=1
-            self.classFilesLineEdit.setText("Files not found")
+        Actions:
+        - If credentials are found set bL1bGetAnc corresp. to given ancillarySource and enable Zhang glint correction option
+        - If not: set bL1bGetAnc = 0 (consequently, Zhang will be disabled after this function)
+        '''
+        if GetAnc_credentials.credentials_stored(ancillarySource):
+            if ancillarySource == 'NASA_Earth_Data':
+                ConfigFile.settings["bL1bGetAnc"] = 1
+            elif ancillarySource == 'ECMWF_ADS':
+                ConfigFile.settings["bL1bGetAnc"] = 2
+            self.RhoRadioButtonZhang.setDisabled(0)
         else:
-            self.classFilesLineEdit.setText("Files found")
-            ConfigFile.settings['RadCalDir'] = self.calibrationPath
-        # Confirm 2 POLAR files found in destination
-        files = glob.glob(os.path.join(self.calibrationPath, '*POLAR*.[tT][xX][tT]'))
-        if len(files) != 2:
-            failCode +=1
-        # Confirm 3 STRAY files found in destination
-        files = glob.glob(os.path.join(self.calibrationPath, '*STRAY*.[tT][xX][tT]'))
-        if len(files) != 3:
-            failCode +=1
-        # Confirm 3 THERMAL files found in destination
-        files = glob.glob(os.path.join(self.calibrationPath, '*THERMAL*.[tT][xX][tT]'))
-        if len(files) != 3:
-            failCode +=1
-        if failCode >0:
-            self.fullFilesLineEdit.setText("Files not found")
+            ConfigFile.settings["bL1bGetAnc"] = 0
+            self.l1bGetAncCheckBox1.setChecked(False)
+            self.l1bGetAncCheckBox2.setChecked(False)
+
+
+    def l1bGetAncResetButtonUpdate(self):
+        '''
+        Fuction applied when reset button is enabled and clicked
+
+        Action:
+        - If either of the anc. sources checked (otherwise should be disabled):
+            - Erase pre-existing (checked) credentials
+            - Pop-up resp. credential window
+            - If credentials not properly provided (e.g. window closed by user with "X"):
+                - Disable this button and Zhang glint correction option.
+        '''
+
+        if self.l1bGetAncCheckBox1.isChecked():
+            ancillarySource = 'NASA_Earth_Data'
+        elif self.l1bGetAncCheckBox2.isChecked():
+            ancillarySource = 'ECMWF_ADS'
         else:
-            self.fullFilesLineEdit.setText("Files found")
-            ConfigFile.settings['FullCalDir'] = self.calibrationPath
+            # This option should never be reached since the button should be disabled in such case...
+            ancillarySource = None
 
-    def l1bDefaultCalRadioButtonClicked(self):
-        print("ConfigWindow - L1b Calibration set to Factory")
-        ConfigFile.settings["bL1bCal"] = 1
-        self.l1bCalStatusUpdate()
+        # Erase pre-existing credentials, open pop-up window and untick resp. options if credentials not set...
+        if ancillarySource:
+            print('Reset %s credentials' % ancillarySource.replace('_', ' '))
+            GetAnc_credentials.erase_user_credentials(ancillarySource)
+            GetAnc_credentials.credentialsWindow(ancillarySource)
+            self.l1bGetAncUntickIfNoCredentials(ancillarySource)
 
-    def l1bClassCalRadioButtonClicked(self):
-        print("ConfigWindow - L1b Calibration set to Class-based")
-        ConfigFile.settings["bL1bCal"] = 2
-        self.l1bCalStatusUpdate()
+        # NB: This is not the same as an "if not ancillarySource": bL1bGetAnc = 0 is set after "l1bGetAncUntickIfNoCredentials" is triggered.
+        if ConfigFile.settings["bL1bGetAnc"] == 0:
+            self.l1bGetAncResetButton.setDisabled(True)
+            self.RhoRadioButtonZhang.setChecked(0)
+            self.RhoRadioButtonZhang.setDisabled(1)
+            # self.RhoRadoButton3C.setChecked(1)
+            self.RhoRadioButtonDefault.setChecked(1)
 
-    def addClassFilesButtonClicked(self):
-        print("ConfigWindow - Add/update class-based files")
-        targetDir = QtWidgets.QFileDialog.getExistingDirectory(self, 'Choose RADCAL Directory.', ConfigFile.settings['RadCalDir'])
+            print("ConfigWindow - l2RhoCorrection set to M99")
+            ConfigFile.settings["bL23CRho"] = 0
+            ConfigFile.settings["bL2ZhangRho"] = 0
+            ConfigFile.settings["bL2DefaultRho"] = 1
 
-        # copy radcal file into configuration folder
-        files = glob.iglob(os.path.join(Path(targetDir), '*RADCAL*.[tT][xX][tT]'))
-        for file in files:
-            dest = Path(self.calibrationPath) / os.path.basename(file)
-            if not dest.exists():
-                print(f'Copying {os.path.basename(file)} to {self.calibrationPath}')
-                shutil.copy(file,dest)
+    def l1bGetAncCheckBoxUpdate(self,ancillarySource):
+        '''
+        Function applied when either GMAO-Merra 2 or ECMWF buttons are clicked.
+        ancillarySource = a string, either NASA_Earth_Data or ECMWF_ADS
 
-        self.RadCalDir = self.calibrationPath
-        print('Radiometric characterization directory changed: ', self.RadCalDir)
-        ConfigFile.settings['RadCalDir'] = self.RadCalDir
+        Action:
+        - If box of a given anc. source is checked, unchecks the 'opposite' box.
+        - If box is checked and resp. credentials don't exist under ~ (see GetAnc_credentials.py), opens credentials pop-up window.
+            - If credentials not properly introduced by user, box is automatically unchecked.
+        - If box is unchecked (equivalently both are unchecked, since they can't be simultaneously checked), then
+            disables Zhang glint correction and sets respective config. parameters to reflect this. Additionally,
+            disables "reset credentials" button (since this button is associated to the resp. checked source).
+        '''
 
-        self.l1bCalStatusUpdate()
+        if ancillarySource == 'NASA_Earth_Data':
+            self.l1bGetAncCheckBox2.setChecked(False)
+        elif ancillarySource == 'ECMWF_ADS':
+            self.l1bGetAncCheckBox1.setChecked(False)
 
-    def l1bFullCalRadioButtonClicked(self):
-        print("ConfigWindow - L1b Calibration set to Instrument-specific FRM")
-        ConfigFile.settings["bL1bCal"] = 3
-        self.l1bCalStatusUpdate()
-
-    def l1bFRMRadioUpdate1(self):
-        print("ConfigWindow - l1bFRMRadioUpdate local files")
-        if self.l1bFRMRadio1.isChecked():
-            self.l1bFRMRadio2.setChecked(False)
-            ConfigFile.settings['FidRadDB'] = 0
-
-    def addFullFilesButtonClicked(self):
-        print("ConfigWindow - Add/update full characterization files")
-        targetDir = QtWidgets.QFileDialog.getExistingDirectory(self, \
-                    'Choose Characterization File Directory.', ConfigFile.settings['FullCalDir'])
-
-        # Copy full characterization files into calibration folder and test it
-        failCode = 0
-        # POLAR
-        files = glob.iglob(os.path.join(Path(targetDir), '*POLAR*.[tT][xX][tT]'))
-        for file in files:
-            dest = Path(self.calibrationPath) / os.path.basename(file)
-            if not dest.exists():
-                print(f'Copying {os.path.basename(file)} to {self.calibrationPath}')
-                shutil.copy(file,dest)
-        # Confirm 2 POLAR files found in destination
-        files = glob.glob(os.path.join(self.calibrationPath, '*POLAR*.[tT][xX][tT]'))
-        if len(files) != 2:
-            failCode+=1
-            print(f'Copying of POLAR files failed. {len(files)}/2 POLAR files found in Config folder')
-
-        # RADCAL
-        files = glob.iglob(os.path.join(Path(targetDir), '*RADCAL*.[tT][xX][tT]'))
-        for file in files:
-            dest = Path(self.calibrationPath) / os.path.basename(file)
-            if not dest.exists():
-                print(f'Copying {os.path.basename(file)} to {self.calibrationPath}')
-                shutil.copy(file,dest)
-        # Confirm 3 RADCAL files found in destination
-        files = glob.glob(os.path.join(self.calibrationPath, '*RADCAL*.[tT][xX][tT]'))
-        if len(files) != 3:
-            failCode+=1
-            print(f'Copying of RADCAL files failed. {len(files)}/3 RADCAL files found in Config folder')
-
-        # STRAYLIGHT
-        files = glob.iglob(os.path.join(Path(targetDir), '*STRAY*.[tT][xX][tT]'))
-        for file in files:
-            dest = Path(self.calibrationPath) / os.path.basename(file)
-            if not dest.exists():
-                print(f'Copying {os.path.basename(file)} to {self.calibrationPath}')
-                shutil.copy(file,dest)
-        # Confirm 3 STRAY files found in destination
-        files = glob.glob(os.path.join(self.calibrationPath, '*STRAY*.[tT][xX][tT]'))
-        if len(files) != 3:
-            failCode+=1
-            print(f'Copying of STRAY files failed. {len(files)}/3 STRAY files found in Config folder')
-
-        # THERMAL
-        files = glob.iglob(os.path.join(Path(targetDir), '*THERMAL*.[tT][xX][tT]'))
-        for file in files:
-            dest = Path(self.calibrationPath) / os.path.basename(file)
-            if not dest.exists():
-                print(f'Copying {os.path.basename(file)} to {self.calibrationPath}')
-                shutil.copy(file,dest)
-        # Confirm 3 THERMAL files found in destination
-        files = glob.glob(os.path.join(self.calibrationPath, '*THERMAL*.[tT][xX][tT]'))
-        if len(files) != 3:
-            failCode+=1
-            print(f'Copying of THERMAL files failed. {len(files)}/3 THERMAL files found in Config folder')
-
-        # ANGULAR
-        files = glob.iglob(os.path.join(Path(targetDir), '*ANGULAR*.[tT][xX][tT]'))
-        for file in files:
-            dest = Path(self.calibrationPath) / os.path.basename(file)
-            if not dest.exists():
-                print(f'Copying {os.path.basename(file)} to {self.calibrationPath}')
-                shutil.copy(file,dest)
-        # Confirm 1 ANGULAR files found in destination
-        files = glob.glob(os.path.join(self.calibrationPath, '*ANGULAR*.[tT][xX][tT]'))
-        if len(files) != 1:
-            failCode+=1
-            print(f'Copying of ANGULAR files failed. {len(files)}/1 ANGULAR files found in Config folder')
-
-        if failCode >0:
-            self.fullFilesLineEdit.setText("Files not found")
+        if self.l1bGetAncCheckBox1.isChecked():
+            print("ConfigWindow - l1bGetAncCheckBoxUpdate GMAO MERRA2")
+            ConfigFile.settings["bL1bGetAnc"] = 1
+            GetAnc_credentials.credentialsWindow('NASA_Earth_Data')
+            self.l1bGetAncUntickIfNoCredentials('NASA_Earth_Data')
+        elif self.l1bGetAncCheckBox2.isChecked():
+            print("ConfigWindow - l1bGetAncCheckBoxUpdate ECMWF CAMS")
+            ConfigFile.settings["bL1bGetAnc"] = 2
+            GetAnc_credentials.credentialsWindow('ECMWF_ADS')
+            self.l1bGetAncUntickIfNoCredentials('ECMWF_ADS')
         else:
-            self.fullFilesLineEdit.setText("Files found")
+            ConfigFile.settings["bL1bGetAnc"] = 0
 
-        self.FullCalDir = self.calibrationPath
-        print('Full characterization directory changed: ', self.FullCalDir)
-        ConfigFile.settings['FullCalDir'] = self.FullCalDir
+        # Disable reset credentials if everything unticked
+        if ConfigFile.settings["bL1bGetAnc"] == 0:
+            self.l1bGetAncResetButton.setDisabled(True)
+            self.RhoRadioButtonZhang.setChecked(0)
+            self.RhoRadioButtonZhang.setDisabled(1)
+            # self.RhoRadoButton3C.setChecked(1)
+            self.RhoRadioButtonDefault.setChecked(1)
 
-    def l1bFRMRadioUpdate2(self):
-        print("ConfigWindow - l1bFRMRadioUpdate FidRadDB")
-        if self.l1bFRMRadio2.isChecked():
-            self.l1bFRMRadio1.setChecked(False)
-            ConfigFile.settings['FidRadDB'] = 1
-
-
-    def FullCalDirButtonPressed(self):
-        if not ConfigFile.settings['FullCalDir'].startswith('Choose'):
-            srcDir = QtWidgets.QFileDialog.getExistingDirectory(self, 'Choose Directory', ConfigFile.settings['FullCalDir'])
+            print("ConfigWindow - l2RhoCorrection set to M99")
+            ConfigFile.settings["bL23CRho"] = 0
+            ConfigFile.settings["bL2ZhangRho"] = 0
+            ConfigFile.settings["bL2DefaultRho"] = 1
         else:
-            srcDir = QtWidgets.QFileDialog.getExistingDirectory(self, 'Choose Directory')
-        print('Full characterization folders selected for copy: ', srcDir)
+            self.l1bGetAncResetButton.setDisabled(False)
 
-        calDir = Path(srcDir)
-        files = glob.iglob(os.path.join(Path(calDir), '*.[tT][xX][tT]'))
-        for file in files:
-            dest = Path(self.calibrationPath) / os.path.basename(file)
-            if not dest.exists():
-                shutil.copy(file,dest)
+    def l1bCalCharButtonPressed(self):
+        print("OC Products Dialogue")
 
-        ConfigFile.settings['FullCalDir'] = self.calibrationPath
-        self.l1bCalStatusUpdate()
+        ConfigWindow.refreshConfig(self)
+        CalCharWindowDialog = CalCharWindow(self.name,self)
+        CalCharWindowDialog.show()
 
     def l1bPlotTimeInterpCheckBoxUpdate(self):
         print("ConfigWindow - l1bPlotTimeInterpCheckBoxUpdate")
@@ -1540,7 +1486,7 @@ class ConfigWindow(QtWidgets.QDialog):
     def l1bqcSpecQualityCheckBoxUpdate(self):
         print("ConfigWindow - l1bqcSpecQualityCheckBoxUpdate")
 
-        disabled = (not self.l1bqcSpecQualityCheckBox.isChecked())
+        disabled = not self.l1bqcSpecQualityCheckBox.isChecked()
         self.l1bqcSpecFilterLiLabel.setDisabled(disabled)
         self.l1bqcSpecFilterLiLineEdit.setDisabled(disabled)
         self.l1bqcSpecFilterLtLabel.setDisabled(disabled)
@@ -1560,7 +1506,7 @@ class ConfigWindow(QtWidgets.QDialog):
     def l1bqcSpecQualityCheckPlotBoxUpdate(self):
         print("ConfigWindow - l1bqcSpecQualityCheckPlotBoxUpdate")
 
-        disabled = (not self.l1bqcSpecQualityCheckPlotBox.isChecked())
+        disabled = not self.l1bqcSpecQualityCheckPlotBox.isChecked()
         if disabled:
             ConfigFile.settings["bL1bqcEnableSpecQualityCheckPlot"] = 0
         else:
@@ -1569,7 +1515,7 @@ class ConfigWindow(QtWidgets.QDialog):
     def l1bqcQualityFlagCheckBoxUpdate(self):
         print("ConfigWindow - l1bqcQualityFlagCheckBoxUpdate")
 
-        disabled = (not self.l1bqcQualityFlagCheckBox.isChecked())
+        disabled = not self.l1bqcQualityFlagCheckBox.isChecked()
         self.l1bqcCloudFlagLabel.setDisabled(disabled)
         self.l1bqcCloudFlagLineEdit.setDisabled(disabled)
         self.l1bqcEsFlagLabel.setDisabled(disabled)
@@ -1583,63 +1529,17 @@ class ConfigWindow(QtWidgets.QDialog):
         else:
             ConfigFile.settings["bL2EnableQualityFlags"] = 1
 
-    def l1bGetAncCheckBoxUpdate1(self):
-        print("ConfigWindow - l1bGetAncCheckBoxUpdate GMAO MERRA2")
-        if self.l1bGetAncCheckBox1.isChecked():
-            self.l1bGetAncCheckBox2.setChecked(False)
-            if not ConfigFile.settings["bL1bObpgCreds"]:
-                usr = QtWidgets.QInputDialog.getText(None,
-                                                "Earthdata Username",
-                                                "Username (Cancel to use current credentials):",
-                                                QtWidgets.QLineEdit.Normal,
-                                                "")
-                if usr[1]:
-                    pwd = QtWidgets.QInputDialog.getText(None,
-                                                    "Earthdata Password",
-                                                    "Password:",
-                                                    QtWidgets.QLineEdit.Normal,
-                                                    "")
-                    GetAnc.userCreds(usr[0],pwd[0])
-                else:
-                    # If the user cancels out of these, presume their account is
-                    # already set up properly and skip netrc file creation.
-                    print('Credentials skipped. Will try to use current credentials.')
-                    ConfigFile.settings["bL1bpObpgCreds"] = 1
-
-            ConfigFile.settings["bL1bpGetAnc"] = 1
-            # self.RhoRadoButton3C.setDisabled(0)
-            self.RhoRadioButtonZhang.setDisabled(0)
-        else:
-            ConfigFile.settings["bL1bpGetAnc"] = 0
-            ConfigFile.settings["bL1bpObpgCreds"] = 0
-            self.RhoRadioButtonZhang.setChecked(0)
-            self.RhoRadioButtonZhang.setDisabled(1)
-            # self.RhoRadoButton3C.setChecked(1)
-            self.RhoRadioButtonDefault.setChecked(1)
-
-            print("ConfigWindow - l2RhoCorrection set to M99")
-            ConfigFile.settings["bL23CRho"] = 0
-            ConfigFile.settings["bL2ZhangRho"] = 0
-            ConfigFile.settings["bL2DefaultRho"] = 1
-
-    def l1bGetAncCheckBoxUpdate2(self):
-        print("ConfigWindow - l1bGetAncCheckBoxUpdate ECMWF")
-        if self.l1bGetAncCheckBox2.isChecked():
-            self.l1bGetAncCheckBox1.setChecked(False)
-            ConfigFile.settings["bL1bpGetAnc"] = 2
-            # self.RhoRadoButton3C.setDisabled(0)
-            self.RhoRadioButtonZhang.setDisabled(0)
-        else:
-            ConfigFile.settings["bL1bpGetAnc"] = 0
-            ConfigFile.settings["bL1bpObpgCreds"] = 0
-            self.RhoRadioButtonZhang.setChecked(0)
-            self.RhoRadioButtonZhang.setDisabled(1)
-            # self.RhoRadoButton3C.setChecked(1)
-            self.RhoRadioButtonDefault.setChecked(1)
-            print("ConfigWindow - l2RhoCorrection set to M99")
-            ConfigFile.settings["bL23CRho"] = 0
-            ConfigFile.settings["bL2ZhangRho"] = 0
-            ConfigFile.settings["bL2DefaultRho"] = 1
+    def l2SVARadioButtonDefaultClicked(self):
+        print("ConfigWindow - l2SVA set to 40")
+        self.SVARadioButtonDefault.setChecked(True)
+        self.SVARadioButton30.setChecked(False)
+        ConfigFile.settings["fL2SVA"] = 40
+        
+    def l2SVARadioButton30Clicked(self):
+        print("ConfigWindow - l2SVA set to 30")
+        self.SVARadioButtonDefault.setChecked(False)
+        self.SVARadioButton30.setChecked(True)
+        ConfigFile.settings["fL2SVA"] = 30
 
     def l2StationsCheckBoxUpdate(self):
         print("ConfigWindow - l2StationsCheckBoxUpdate")
@@ -1702,29 +1602,29 @@ class ConfigWindow(QtWidgets.QDialog):
         print("ConfigWindow - l2NIRCorrection set to Simple")
         self.SimpleNIRRadioButton.setChecked(True)
         self.SimSpecNIRRadioButton.setChecked(False)
-        self.YourNIRRadioButton.setChecked(False)
+        # self.YourNIRRadioButton.setChecked(False)
         ConfigFile.settings["bL2SimpleNIRCorrection"] = 1
         ConfigFile.settings["bL2SimSpecNIRCorrection"] = 0
     def l2SimSpecNIRRadioButtonClicked(self):
         print("ConfigWindow - l2NIRCorrection set to SimSpec")
         self.SimpleNIRRadioButton.setChecked(False)
         self.SimSpecNIRRadioButton.setChecked(True)
-        self.YourNIRRadioButton.setChecked(False)
+        # self.YourNIRRadioButton.setChecked(False)
         ConfigFile.settings["bL2SimpleNIRCorrection"] = 0
         ConfigFile.settings["bL2SimSpecNIRCorrection"] = 1
-    def l2YourNIRRadioButtonClicked(self):
-        print("ConfigWindow - l2NIRCorrection set to Simple. You have not submitted Your method.")
-        self.SimpleNIRRadioButton.setChecked(True)
-        self.SimSpecNIRRadioButton.setChecked(False)
-        self.YourNIRRadioButton.setChecked(True)
-        ConfigFile.settings["bL2SimpleNIRCorrection"] = 1 # Mock up. Use Simple
-        ConfigFile.settings["bL2SimSpecNIRCorrection"] = 0
+    # def l2YourNIRRadioButtonClicked(self):
+    #     print("ConfigWindow - l2NIRCorrection set to Simple. You have not submitted Your method.")
+    #     self.SimpleNIRRadioButton.setChecked(True)
+    #     self.SimSpecNIRRadioButton.setChecked(False)
+    #     # self.YourNIRRadioButton.setChecked(True)
+    #     ConfigFile.settings["bL2SimpleNIRCorrection"] = 1 # Mock up. Use Simple
+    #     ConfigFile.settings["bL2SimSpecNIRCorrection"] = 0
     def l2NIRCorrectionCheckBoxUpdate(self):
         print("ConfigWindow - l2NIRCorrectionCheckBoxUpdate")
         disabled = (not self.l2NIRCorrectionCheckBox.isChecked())
         self.SimpleNIRRadioButton.setDisabled(disabled)
         self.SimSpecNIRRadioButton.setDisabled(disabled)
-        self.YourNIRRadioButton.setDisabled(True)
+        # self.YourNIRRadioButton.setDisabled(True)
         if disabled:
             ConfigFile.settings["bL2PerformNIRCorrection"] = 0
         else:
@@ -1745,56 +1645,81 @@ class ConfigWindow(QtWidgets.QDialog):
         disabled = (not self.l2BRDFCheckBox.isChecked())
         self.l2BRDF_fQCheckBox.setDisabled(disabled)
         self.l2BRDF_fQLabel.setDisabled(disabled)
-        # self.l2BRDF_IOPCheckBox.setDisabled(disabled)
-        self.l2BRDF_IOPCheckBox.setDisabled(True)
-        # self.l2BRDF_IOPLabel.setDisabled(disabled)
-        self.l2BRDF_IOPLabel.setDisabled(True)
+        self.l2BRDF_IOPCheckBox.setDisabled(disabled)
+        self.l2BRDF_IOPLabel.setDisabled(disabled)
+        self.l2BRDF_O23CheckBox.setDisabled(disabled)
+        self.l2BRDF_O23Label.setDisabled(disabled)
 
         if disabled:
             ConfigFile.settings["bL2BRDF"] = 0
             ConfigFile.settings["bL2BRDF_fQ"] = 0
             ConfigFile.settings["bL2BRDF_IOP"] = 0
+            ConfigFile.settings["bL2BRDF_O23"] = 0
             self.l2BRDF_fQCheckBox.setChecked(False)
             self.l2BRDF_IOPCheckBox.setChecked(False)
-        else:
-            ConfigFile.settings["bL2BRDF"] = 1
-            self.l2BRDF_fQCheckBox.setChecked(True) # Until IOP-based is ready
+            self.l2BRDF_O23CheckBox.setChecked(False)
+        elif ConfigFile.settings["bL2BRDF_fQ"] == 0 and ConfigFile.settings["bL2BRDF_IOP"] == 0 and ConfigFile.settings["bL2BRDF_O23"] == 0:
+            ConfigFile.settings["bL2BRDF_IOP"] = 1
+            self.l2BRDF_fQCheckBox.setChecked(False)
+            self.l2BRDF_IOPCheckBox.setChecked(True)
+            self.l2BRDF_O23CheckBox.setChecked(False)
 
+
+    # Make BRDF type exclusive so that it is clear what is written to SeaBASS output
+    #   Reprocess to change to another BRDF type
     def l2BRDF_fQCheckBoxUpdate(self):
         print("ConfigWindow - l2BRDF_fQCheckBoxUpdate")
-
         disabled = (not self.l2BRDF_fQCheckBox.isChecked())
         if disabled:
             ConfigFile.settings["bL2BRDF_fQ"] = 0
+            self.l2BRDF_fQCheckBox.setChecked(False)
         else:
             ConfigFile.settings["bL2BRDF_fQ"] = 1
-            # # This will require chlor_a in derived products to be turned on
-            # # which in turn requires MODIS bands...
-            # self.l2WeightMODISACheckBox.setChecked(True)
-            # ConfigFile.products["bL2Prodoc3m"] = 1
-
+            ConfigFile.settings["bL2BRDF_IOP"] = 0
+            ConfigFile.settings["bL2BRDF_O23"] = 0
+            self.l2BRDF_fQCheckBox.setChecked(True)
+            self.l2BRDF_IOPCheckBox.setChecked(False)
+            self.l2BRDF_O23CheckBox.setChecked(False)
 
     def l2BRDF_IOPCheckBoxUpdate(self):
         print("ConfigWindow - l2BRDF_IOPCheckBoxUpdate")
-
         disabled = (not self.l2BRDF_IOPCheckBox.isChecked())
         if disabled:
             ConfigFile.settings["bL2BRDF_IOP"] = 0
+            self.l2BRDF_IOPCheckBox.setChecked(False)
         else:
+            ConfigFile.settings["bL2BRDF_fQ"] = 0
             ConfigFile.settings["bL2BRDF_IOP"] = 1
+            ConfigFile.settings["bL2BRDF_O23"] = 0
+            self.l2BRDF_fQCheckBox.setChecked(False)
+            self.l2BRDF_IOPCheckBox.setChecked(True)
+            self.l2BRDF_O23CheckBox.setChecked(False)
 
+    def l2BRDF_O23CheckBoxUpdate(self):
+        print("ConfigWindow - l2BRDF_O23CheckBoxUpdate")
+        disabled = (not self.l2BRDF_O23CheckBox.isChecked())
+        if disabled:
+            ConfigFile.settings["bL2BRDF_O23"] = 0
+            self.l2BRDF_O23CheckBox.setChecked(False)
+        else:
+            ConfigFile.settings["bL2BRDF_fQ"] = 0
+            ConfigFile.settings["bL2BRDF_IOP"] = 0
+            ConfigFile.settings["bL2BRDF_O23"] = 1
+            self.l2BRDF_fQCheckBox.setChecked(False)
+            self.l2BRDF_IOPCheckBox.setChecked(False)
+            self.l2BRDF_O23CheckBox.setChecked(True)
 
     def l2OCproductsButtonPressed(self):
         print("OC Products Dialogue")
 
         ConfigWindow.refreshConfig(self)
+        # print(f'ConfigFile.products["bL2PlotProd"] = {ConfigFile.products["bL2PlotProd"]}')
         OCproductsDialog = OCproductsWindow(self)
-        # OCproductsDialog.exec()
         OCproductsDialog.show()
 
         if int(ConfigFile.settings["bL2WeightMODISA"]) == 1:
             self.l2WeightMODISACheckBox.setChecked(True)
-
+        # print(f'ConfigFile.products["bL2PlotProd"] = {ConfigFile.products["bL2PlotProd"]}')
 
     def l2SaveSeaBASSCheckBoxUpdate(self):
         print("ConfigWindow - l2SaveSeaBASSCheckBoxUpdate")
@@ -1823,6 +1748,7 @@ class ConfigWindow(QtWidgets.QDialog):
             seaBASSHeaderDialog.show()
             # print("SeaBASS Header file lost. Please restore to Config directory or recreate.")
         self.l2SeaBASSHeaderLabel.setText(f'  {ConfigFile.settings["seaBASSHeaderFileName"]}')
+        ConfigWindow.refreshConfig(self)
 
     def l2WriteReportCheckBoxUpdate(self):
         print("ConfigWindow - l2WriteReportCheckBoxUpdate")
@@ -1852,7 +1778,7 @@ class ConfigWindow(QtWidgets.QDialog):
         ConfigFile.settings["bL1aCleanSZA"] = int(self.l1aCleanSZACheckBox.isChecked())
         ConfigFile.settings["fL1aCleanSZAMax"] = float(self.l1aCleanSZAMaxLineEdit.text())
 
-        ConfigFile.settings["bL1aqcSolarTracker"] = int(self.l1aqcSolarTrackerCheckBox.isChecked())
+        ConfigFile.settings["bL1aqcSunTracker"] = int(self.l1aqcSunTrackerCheckBox.isChecked())
         ConfigFile.settings["fL1aqcRotatorHomeAngle"] = float(self.l1aqcRotatorHomeAngleLineEdit.text())
         ConfigFile.settings["bL1aqcRotatorDelay"] = int(self.l1aqcRotatorDelayCheckBox.isChecked())
         ConfigFile.settings["fL1aqcRotatorDelay"] = float(self.l1aqcRotatorDelayLineEdit.text())
@@ -1878,7 +1804,7 @@ class ConfigWindow(QtWidgets.QDialog):
         ConfigFile.settings["fL1bDefaultAOD"] = float(self.l1bDefaultAODLineEdit.text())
         ConfigFile.settings["fL1bDefaultSalt"] = float(self.l1bDefaultSaltLineEdit.text())
         ConfigFile.settings["fL1bDefaultSST"] = float(self.l1bDefaultSSTLineEdit.text())
-        ConfigFile.settings["fL1bInterpInterval"] = float(self.l1bInterpIntervalLineEdit.text())
+        # ConfigFile.settings["fL1bInterpInterval"] = float(self.l1bInterpIntervalLineEdit.text())
         ConfigFile.settings["bL1bPlotTimeInterp"] = int(self.l1bPlotTimeInterpCheckBox.isChecked())
         ConfigFile.settings["fL1bPlotInterval"] = float(self.l1bPlotIntervalLineEdit.text())
 
@@ -1918,6 +1844,7 @@ class ConfigWindow(QtWidgets.QDialog):
         ConfigFile.settings["bL2BRDF"] = int(self.l2BRDFCheckBox.isChecked())
         ConfigFile.settings["bL2BRDF_fQ"] = int(self.l2BRDF_fQCheckBox.isChecked())
         ConfigFile.settings["bL2BRDF_IOP"] = int(self.l2BRDF_IOPCheckBox.isChecked())
+        ConfigFile.settings["bL2BRDF_O23"] = int(self.l2BRDF_O23CheckBox.isChecked())
 
         ConfigFile.settings["bL2WeightMODISA"] = int(self.l2WeightMODISACheckBox.isChecked())
         ConfigFile.settings["bL2WeightSentinel3A"] = int(self.l2WeightSentinel3ACheckBox.isChecked())
@@ -1926,18 +1853,16 @@ class ConfigWindow(QtWidgets.QDialog):
         ConfigFile.settings["bL2WeightSentinel3B"] = int(self.l2WeightSentinel3BCheckBox.isChecked())
         ConfigFile.settings["bL2WeightVIIRSJ"] = int(self.l2WeightVIIRSJCheckBox.isChecked())
 
-        ConfigFile.settings["bL2WeightUncertainties"] = int(self.l2WeightUncertaintiesCheckBox.isChecked())
-
         ConfigFile.settings["bL2PlotRrs"] = int(self.l2PlotRrsCheckBox.isChecked())
         ConfigFile.settings["bL2PlotnLw"] = int(self.l2PlotnLwCheckBox.isChecked())
         ConfigFile.settings["bL2PlotEs"] = int(self.l2PlotEsCheckBox.isChecked())
         ConfigFile.settings["bL2PlotLi"] = int(self.l2PlotLiCheckBox.isChecked())
         ConfigFile.settings["bL2PlotLt"] = int(self.l2PlotLtCheckBox.isChecked())
+        ConfigFile.settings["bL2UncertaintyBreakdownPlot"] = int(self.l2UncertaintyBreakdownPlotCheckBox.isChecked())
         ConfigFile.settings["bL2SaveSeaBASS"] = int(self.l2SaveSeaBASSCheckBox.isChecked())
         ConfigFile.settings["bL2WriteReport"] = int(self.l2WriteReportCheckBox.isChecked())
 
         self.checkForChlor()
-
 
     def saveAsButtonPressed(self):
         print("ConfigWindow - Save As Pressed")
@@ -1975,7 +1900,6 @@ class ConfigWindow(QtWidgets.QDialog):
 
             self.setWindowTitle(ConfigFile.filename)
 
-
     def cancelButtonPressed(self):
         print("ConfigWindow - Cancel Pressed")
         self.checkForChlor()
@@ -1994,4 +1918,3 @@ class ConfigWindow(QtWidgets.QDialog):
 
             ConfigFile.settings["bL2WeightMODISA"] = 1
             self.l2WeightMODISACheckBox.setChecked(True)
-

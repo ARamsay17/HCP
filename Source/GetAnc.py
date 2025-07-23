@@ -1,8 +1,5 @@
+''' API to retrieve atmospheric MERRA2 model data'''
 import os
-import stat
-# import urllib.request as ur
-# import requests
-import platform
 import numpy as np
 from PyQt5 import QtWidgets
 
@@ -10,51 +7,14 @@ from Source.HDFRoot import HDFRoot
 from Source.Utilities import Utilities
 from Source import OBPGSession, PATH_TO_DATA
 
-
 class GetAnc:
-
-    @staticmethod
-    def userCreds(usr,pwd):
-        ''' Saves user credentials '''
-        home = os.path.expanduser('~')
-        if platform.system() == 'Windows':
-            netrcFile = os.path.join(home,'_netrc')
-        else:
-            netrcFile = os.path.join(home,'.netrc')
-        if os.path.exists(netrcFile):
-            os.chmod(netrcFile, stat.S_IRUSR | stat.S_IWUSR)
-
-        if not os.path.exists(netrcFile):
-            with open(netrcFile, 'w') as fo:
-                fo.write(f'machine urs.earthdata.nasa.gov login {usr} password {pwd}\n')
-            os.chmod(netrcFile, stat.S_IRUSR | stat.S_IWUSR)
-        else:
-            # print('netrc found')
-            fo = open(netrcFile)
-            lines = fo.readlines()
-            fo.close()
-            # This will find and replace or add the Earthdata server
-            foundED = False
-            for i, line in enumerate(lines):
-                if 'machine urs.earthdata.nasa.gov login' in line:
-                    foundED = True
-                    lineIndx = i
-
-            if foundED is True:
-                lines[lineIndx] = f'machine urs.earthdata.nasa.gov login {usr} password {pwd}\n'
-            else:
-                lines = lines + [f'\nmachine urs.earthdata.nasa.gov login {usr} password {pwd}\n']
-
-            # with open(netrcFile, "w") as fo:
-            fo = open(netrcFile,"w")
-            fo.writelines(lines)
-            fo.close()
+    '''API object for retrieving MERRA2'''
 
     @staticmethod
     def getAnc(inputGroup):
         ''' Retrieve model data and save in Data/Anc and in ModData '''
         server = 'oceandata.sci.gsfc.nasa.gov'
-        cwd = os.getcwd()
+        # cwd = os.getcwd()
 
         if not os.path.exists(os.path.join(PATH_TO_DATA, 'Anc')):
             os.makedirs(os.path.join(PATH_TO_DATA, 'Anc'))
@@ -66,10 +26,11 @@ class GetAnc:
         lon = inputGroup.getDataset('LONGITUDE').data["NONE"]
 
         modWind = []
+        modAirT = []
         modAOD = []
 
         # Loop through the input group and extract model data for each element
-        oldFile = None
+        oldFile,ancLat,ancLon,ancUwind,ancVwind,ancLatAer,ancLonAer,ancAirT = None,None,None,None,None,None,None,None
         for index, dateTag in enumerate(latDate):
             dateTagNew = Utilities.dateTagToDate(dateTag)
             year = int(str(int(dateTagNew))[0:4])
@@ -82,6 +43,7 @@ class GetAnc:
             hr = int(Utilities.timeTag2ToSec(latTime[index])/60/60)
 
             file1 = f"GMAO_MERRA2.{year}{month:02.0f}{day:02.0f}T{hr:02.0f}0000.MET.nc"
+
             if oldFile != file1:
                 ancPath = os.path.join(PATH_TO_DATA, 'Anc')
                 filePath1 = os.path.join(PATH_TO_DATA, 'Anc', file1)
@@ -121,13 +83,16 @@ class GetAnc:
                     msg = f'Request error: {status}'
                     print(msg)
                     Utilities.writeLogFile(msg)
+                    if os.environ["HYPERINSPACE_CMD"].lower() == 'true':
+                        return
                     alert = QtWidgets.QMessageBox()
                     alert.setText(f'Request error: {status}\n \
-                                    Enter server credentials in the\n \
-                                    Configuration Window L1BQC and\n  \
-                                    check network path.')
+                                    Check that server credentials have \n \
+                                    been entered in Configuration Window L1B. \n  \
+                                    MERRA2 model data are not available until \n \
+                                    the third week of the following month.')
                     alert.exec_()
-                    return None
+                    return
 
                 # GMAO Atmospheric model data
                 node = HDFRoot.readHDF5(filePath1)
@@ -147,8 +112,8 @@ class GetAnc:
                 ancLat = np.array(gmaoGroup.getDataset("lat").data.tolist())
                 ancLon = np.array(gmaoGroup.getDataset("lon").data.tolist())
 
-                # Humidity
-                # not needed
+                # AirTemp
+                ancAirT = gmaoGroup.getDataset("T10M") # Air temp at 10 m [K]
 
                 # Wind
                 ancUwind = gmaoGroup.getDataset("U10M") # Eastward at 10m [m/s]
@@ -179,7 +144,7 @@ class GetAnc:
 
             oldFile = file1
 
-            # Locate the relevant cell
+            # Locate the relevant cell            
             latInd = Utilities.find_nearest(ancLat,lat[index])
             lonInd = Utilities.find_nearest(ancLon,lon[index])
 
@@ -187,6 +152,9 @@ class GetAnc:
             uWind = ancUwind.data["None"][latInd][lonInd]
             vWind = ancVwind.data["None"][latInd][lonInd]
             modWind.append(np.sqrt(uWind*uWind + vWind*vWind)) # direction not needed
+
+            aTemp = ancAirT.data["None"][latInd][lonInd]
+            modAirT.append(aTemp - 273.15) # [C]
 
             # Locate the relevant cell
             latInd = Utilities.find_nearest(ancLatAer,lat[index])
@@ -201,15 +169,18 @@ class GetAnc:
         modGroup.addDataset('Timetag2')
         modGroup.addDataset('AOD')
         modGroup.addDataset('Wind')
-        '''NOTE: This is an unconventional use of Dataset, i.e., overides object with .data and .column.
-            Keeping for continuity of application'''
+        modGroup.addDataset('AirTemp')
+
+        # NOTE: This is an unconventional use of Dataset, i.e., overides object with .data and .column.
+        #    Keeping for continuity of application
         modGroup.datasets['Datetag'] = latDate
         modGroup.datasets['Timetag2'] = latTime
         modGroup.datasets['AOD'] = modAOD
         modGroup.datasets['Wind'] = modWind
+        modGroup.datasets['AirTemp'] = modAirT
         modGroup.attributes['Wind units'] = ancUwind.attributes['units']
+        modGroup.attributes['Air Temp. units'] = 'C'
         modGroup.attributes['AOD wavelength'] = ancTExt.attributes['wavelength']
         print('GetAnc: Model data retrieved')
 
         return modData
-

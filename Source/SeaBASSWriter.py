@@ -1,6 +1,7 @@
+'''Write L2 files (Es and Rrs) to SeaBASS files. Rename to SeaBASS format.'''
 import os
-import numpy as np
 import time
+import numpy as np
 
 from Source import PATH_TO_CONFIG
 from Source.HDFRoot import HDFRoot
@@ -10,6 +11,7 @@ from Source.Utilities import Utilities
 
 
 class SeaBASSWriter:
+    '''L2 SeaBASS file writer'''
 
     @staticmethod
     def sbFileName(fp,headerBlock,formattedData,dtype):
@@ -41,18 +43,26 @@ class SeaBASSWriter:
         referenceGroup = node.getGroup("IRRADIANCE")
 
         if level == '2':
-            # referenceGroup = node.getGroup("IRRADIANCE")
             esData = referenceGroup.getDataset("ES_HYPER")
-            # if ConfigFile.settings["bL1cSolarTracker"]:
             ancillaryGroup = node.getGroup("ANCILLARY")
-            # else:
-            #     ancillaryGroup = node.getGroup("ANCILLARY_METADATA")
             wind = ancillaryGroup.getDataset("WINDSPEED")
             wind.datasetToColumns()
             winCol = wind.columns["WINDSPEED"]
             aveWind = np.nanmean(winCol)
 
-        headerBlock['original_file_name'] = node.attributes['RAW_FILE_NAME']
+        if ConfigFile.settings['SensorType'].lower() =='trios':
+            fileNameString = node.attributes['RAW_FILE_NAME']
+            fileNameList = fileNameString.split(',')
+            headerRawNames = ''
+            for i, fp in enumerate(fileNameList):
+                fp = fp.replace("[",'').replace("'",'').replace("]",'')
+                if i==len(fileNameList)-1:
+                    headerRawNames = headerRawNames + os.path.basename(fp)
+                else:
+                    headerRawNames = headerRawNames + os.path.basename(fp) +','
+            headerBlock['original_file_name'] = headerRawNames
+        else:
+            headerBlock['original_file_name'] = node.attributes['RAW_FILE_NAME']
         # headerBlock['data_file_name'] = os.path.split(fp)[1].replace('.hdf','.sb')
         # headerBlock['data_file_name'] = SeaBASSWriter.sbFileName()
         headerBlock['comments'] = headerBlock['comments'] + f'\n! DateTime Processed = {time.asctime()}'
@@ -63,14 +73,18 @@ class SeaBASSWriter:
         dateDT = [Utilities.dateTagToDateTime(x) for x in dateDay]
         timeTag2 = esData.data['Timetag2'].tolist()
         timeDT = []
-        for i in range(len(dateDT)):
-            timeDT.append(Utilities.timeTag2ToDateTime(dateDT[i],timeTag2[i]))
+        for i, dtDT in enumerate(dateDT):
+            timeDT.append(Utilities.timeTag2ToDateTime(dtDT,timeTag2[i]))
 
         # Python 2 format operator
-        startTime = "%02d:%02d:%02d[GMT]" % (min(timeDT).hour, min(timeDT).minute, min(timeDT).second)
-        endTime = "%02d:%02d:%02d[GMT]" % (max(timeDT).hour, max(timeDT).minute, max(timeDT).second)
-        startDate = "%04d%02d%02d" % (min(timeDT).year, min(timeDT).month, min(timeDT).day)
-        endDate = "%04d%02d%02d" % (max(timeDT).year, max(timeDT).month, max(timeDT).day)
+        # startTime = "%02d:%02d:%02d[GMT]" % (min(timeDT).hour, min(timeDT).minute, min(timeDT).second)
+        startTime = f"{min(timeDT).hour:02d}:{min(timeDT).minute:02d}:{min(timeDT).second:02d}[GMT]"
+        # endTime = "%02d:%02d:%02d[GMT]" % (max(timeDT).hour, max(timeDT).minute, max(timeDT).second)
+        endTime = f"{max(timeDT).hour:02d}:{max(timeDT).minute:02d}:{max(timeDT).second:02d}[GMT]"
+        # startDate = "%04d%02d%02d" % (min(timeDT).year, min(timeDT).month, min(timeDT).day)
+        startDate = f"{min(timeDT).year:04d}{min(timeDT).month:02d}{min(timeDT).day:02d}"
+        # endDate = "%04d%02d%02d" % (max(timeDT).year, max(timeDT).month, max(timeDT).day)
+        endDate = f"{max(timeDT).year:04d}{max(timeDT).month:02d}{max(timeDT).day:02d}"
 
         # Convert Position
         # Python 3 format syntax
@@ -83,7 +97,11 @@ class SeaBASSWriter:
             station = node.getGroup('ANCILLARY').getDataset('STATION').data[0][2]
             headerBlock['station'] = station
         else:
-            headerBlock['station'] = node.attributes['RAW_FILE_NAME'].split('.')[0]
+            # if ConfigFile.settings['SensorType'].lower() =='trios':
+                # headerBlock['station'] = headerRawNames
+            headerBlock['station'] = node.attributes['L1BQC_FILE_NAME'].split('.')[0]
+            # else:
+                # headerBlock['station'] = node.attributes['RAW_FILE_NAME'].split('.')[0]
         if headerBlock['start_time'] == '':
             headerBlock['start_time'] = startTime
         if headerBlock['end_time'] == '':
@@ -100,6 +118,8 @@ class SeaBASSWriter:
             headerBlock['east_longitude'] = eastLon
         if headerBlock['west_longitude'] == '':
             headerBlock['west_longitude'] = westLon
+        if headerBlock['documents'] == '':
+            headerBlock['documents'] = 'README.md'
         if level == '2':
             headerBlock['wind_speed'] = aveWind
         return headerBlock
@@ -149,12 +169,14 @@ class SeaBASSWriter:
         newData = SeaBASSWriter.removeColumns(newData,'SOLAR_AZ')
         wind = dsCopy['WIND'].tolist()
         newData = SeaBASSWriter.removeColumns(newData,'WIND')
+        bincount = dsCopy['BINCOUNT'].tolist()
+        newData = SeaBASSWriter.removeColumns(newData,'BINCOUNT')
 
         dsCopy = newData
 
         # Change field names for SeaBASS compliance
         bands = list(dsCopy.dtype.names)
-        ls = ['date','time','lat','lon','RelAz','SZA','AOT','cloud','wind']
+        ls = ['date','time','lat','lon','RelAz','SZA','AOT','cloud','wind','bincount']
 
         fieldSpecs = {}
         fieldSpecs['rrs'] = {'fieldName': 'Rrs', 'unc_or_sd':'unc'}
@@ -177,6 +199,7 @@ class SeaBASSWriter:
         unitsLine.append('unitless') # AOD
         unitsLine.append('%') # cloud
         unitsLine.append('m/s') # wind
+        unitsLine.append('none') # bincount
         unitsLine.extend([units]*lenRad) # data
         if dsDelta is not None:
             unitsLine.extend([units]*lenRad)    # data uncertainty
@@ -185,11 +208,11 @@ class SeaBASSWriter:
         # Add data for each row
         dataOut = []
         formatStr = str('{:04d}{:02d}{:02d},{:02d}:{:02d}:{:02d},{:.4f},{:.4f},{:.1f},{:.1f}'\
-            + ',{:.4f},{:.0f},{:.1f}' + ',{:.6f}'*lenRad)
+            + ',{:.4f},{:.0f},{:.1f},{:.0f}' + ',{:.6f}'*lenRad)
         if dsDelta is not None:
             formatStr = formatStr + ',{:.6f}' * lenRad
         for i in range(dsCopy.shape[0]):
-            subList = [lat[i],lon[i],relAz[i],sza[i],aod[i],cloud[i],wind[i]]
+            subList = [lat[i],lon[i],relAz[i],sza[i],aod[i],cloud[i],wind[i],bincount[i]]
             lineList = [timeDT[i].year,timeDT[i].month,timeDT[i].day,timeDT[i].hour,timeDT[i].minute,timeDT[i].second] +\
                 subList + list(dsCopy[i].tolist())
 
@@ -220,12 +243,13 @@ class SeaBASSWriter:
         outFile = open(outFileName,'w',newline='\n')
         outFile.write('/begin_header\n')
         for key,value in headerBlock.items():
-            if key != 'comments' and key != 'other_comments' and key != 'version' and key != 'platform':
+            if key != 'comments' and key != 'other_comments' and key != 'version':# and key != 'platform':
                 line = f'/{key}={value}\n'
                 outFile.write(line)
-            if key == 'platform':
-                line = f'!/{key}={value}\n'
-                outFile.write(line)
+            # if key == 'platform':
+            #     # NOTE: While header is pending at SeaBASS
+            #     line = f'!/{key}={value}\n'
+            #     outFile.write(line)
         outFile.write(headerBlock['comments']+'\n')
         outFile.write(headerBlock['other_comments']+'\n')
         outFile.write('/fields='+fields+'\n')
@@ -251,7 +275,7 @@ class SeaBASSWriter:
         # Make sure hdf can be read
         try:
             root = HDFRoot.readHDF5(fp)
-        except:
+        except Exception:
             print('SeaBassWriter: cannot open HDF. May be open in another app.')
             return
 
@@ -271,6 +295,13 @@ class SeaBASSWriter:
         if ConfigFile.settings['bL2BRDF']:
             if ConfigFile.settings['bL2BRDF_fQ']:
                 nLwData_BRDF = reflectanceGroup.getDataset("nLw_HYPER_M02")
+                rrsData_BRDF = reflectanceGroup.getDataset("Rrs_HYPER_M02")
+            if ConfigFile.settings['bL2BRDF_IOP']:
+                nLwData_BRDF = reflectanceGroup.getDataset("nLw_HYPER_L11")
+                rrsData_BRDF = reflectanceGroup.getDataset("Rrs_HYPER_L11")
+            if ConfigFile.settings['bL2BRDF_O23']:
+                nLwData_BRDF = reflectanceGroup.getDataset("nLw_HYPER_O23")
+                rrsData_BRDF = reflectanceGroup.getDataset("Rrs_HYPER_O23")
             # There are currently no additional uncertainties added for BRDF
             # nLwUnc_BRDF = reflectanceGroup.getDataset("nLw_HYPER_unc")
 
@@ -287,6 +318,12 @@ class SeaBASSWriter:
             print("SeaBASSWriter: Radiometric data is missing")
             return
 
+        # Append bincount to datasets
+        bincountData = reflectanceGroup.getDataset("Ensemble_N")
+        bincountData.datasetToColumns()
+        bincount = bincountData.columns["N"]
+
+
         # Append latpos/lonpos to datasets
         ancGroup = root.getGroup("ANCILLARY")
         latposData = ancGroup.getDataset("LATITUDE")
@@ -301,6 +338,7 @@ class SeaBASSWriter:
 
         if ConfigFile.settings['bL2BRDF']:
             nLwData_BRDF.datasetToColumns()
+            rrsData_BRDF.datasetToColumns()
 
         # In the case of TriOS factory, rrsUnc is None so datasetToColumns() is not applicable
         if rrsUnc is not None:
@@ -319,6 +357,7 @@ class SeaBASSWriter:
         nLwCols = nLwData.columns
         if ConfigFile.settings['bL2BRDF']:
             nLwCols_BRDF = nLwData_BRDF.columns
+            rrsCols_BRDF = rrsData_BRDF.columns
 
         # In the case of TriOS factory, rrsUnc is None
         if rrsUnc is not None:
@@ -328,25 +367,29 @@ class SeaBASSWriter:
         for k in list(esCols.keys()):
             if (k != 'Datetag') and (k != 'Timetag2'):
                 if float(k) < minWave or float(k) > maxWave:
-                     del esCols[k]
-                     del esColsUnc[k]
+                    del esCols[k]
+                    del esColsUnc[k]
         for k in list(rrsCols.keys()):
             if (k != 'Datetag') and (k != 'Timetag2'):
                 if float(k) < minWave or float(k) > maxWave:
-                     del rrsCols[k]
-                     if rrsUnc is not None:
-                         del rrsColsUnc[k]
+                    del rrsCols[k]
+                    if rrsUnc is not None:
+                        del rrsColsUnc[k]
         for k in list(nLwCols.keys()):
             if (k != 'Datetag') and (k != 'Timetag2'):
                 if float(k) < minWave or float(k) > maxWave:
-                     del nLwCols[k]
-                     if nLwUnc is not None:
-                         del nLwColsUnc[k]
+                    del nLwCols[k]
+                    if nLwUnc is not None:
+                        del nLwColsUnc[k]
         if ConfigFile.settings['bL2BRDF']:
             for k in list(nLwCols_BRDF.keys()):
                 if (k != 'Datetag') and (k != 'Timetag2'):
                     if float(k) < minWave or float(k) > maxWave:
                         del nLwCols_BRDF[k]
+            for k in list(rrsCols_BRDF.keys()):
+                if (k != 'Datetag') and (k != 'Timetag2'):
+                    if float(k) < minWave or float(k) > maxWave:
+                        del rrsCols_BRDF[k]
 
         esData.columns = esCols
         esUnc.columns = esColsUnc
@@ -354,11 +397,15 @@ class SeaBASSWriter:
         nLwData.columns = nLwCols
         if ConfigFile.settings['bL2BRDF']:
             nLwData_BRDF.columns = nLwCols_BRDF
+            rrsData_BRDF.columns = rrsCols_BRDF
 
         if rrsUnc is not None:
             rrsUnc.columns = rrsColsUnc
             nLwUnc.columns = nLwColsUnc
 
+        esData.columns["BINCOUNT"] = bincount
+        rrsData.columns["BINCOUNT"] = bincount
+        nLwData.columns["BINCOUNT"] = bincount
         esData.columns["LATITUDE"] = latpos
         rrsData.columns["LATITUDE"] = latpos
         nLwData.columns["LATITUDE"] = latpos
@@ -368,9 +415,14 @@ class SeaBASSWriter:
         rrsData.columnsToDataset()
         nLwData.columnsToDataset()
         if ConfigFile.settings['bL2BRDF']:
+            nLwData_BRDF.columns["BINCOUNT"] = bincount
             nLwData_BRDF.columns["LATITUDE"] = latpos
             nLwData_BRDF.columns["LONGITUDE"] = lonpos
             nLwData_BRDF.columnsToDataset()
+            rrsData_BRDF.columns["BINCOUNT"] = bincount
+            rrsData_BRDF.columns["LATITUDE"] = latpos
+            rrsData_BRDF.columns["LONGITUDE"] = lonpos
+            rrsData_BRDF.columnsToDataset()
         # liData.columns["LATITUDE"] = latpos
         # ltData.columns["LATITUDE"] = latpos
         # liData.columns["LONGITUDE"] = lonpos
@@ -500,6 +552,14 @@ class SeaBASSWriter:
             nLwData_BRDF.columns["SZA"] = sza
             nLwData_BRDF.columns["WIND"] = wind
             nLwData_BRDF.columnsToDataset()
+            rrsData_BRDF.columns["AOD"] = aod
+            rrsData_BRDF.columns["CLOUD"] = cloud
+            rrsData_BRDF.columns["SOLAR_AZ"] = azimuth
+            rrsData_BRDF.columns["HEADING"] = heading
+            rrsData_BRDF.columns["REL_AZ"] = relAz
+            rrsData_BRDF.columns["SZA"] = sza
+            rrsData_BRDF.columns["WIND"] = wind
+            rrsData_BRDF.columnsToDataset()
 
         # Format the non-specific header block
         headerBlock = SeaBASSWriter.formatHeader(fp,root, level='2')
@@ -510,18 +570,37 @@ class SeaBASSWriter:
         formattedEs, fieldsEs, unitsEs = SeaBASSWriter.formatData2(esData,esUnc,'es',irradianceGroup.attributes["ES_UNITS"])
         if ConfigFile.settings['bL2BRDF']:
             formattednLw_BRDF, fieldsnLw_BRDF, unitsnLw_BRDF  = SeaBASSWriter.formatData2(nLwData_BRDF,nLwUnc,'Lwnex',reflectanceGroup.attributes["nLw_UNITS"])
+            formattedRrs_BRDF, fieldsRrs_BRDF, unitsRrs_BRDF  = SeaBASSWriter.formatData2(rrsData_BRDF,rrsUnc,'rrs',reflectanceGroup.attributes["Rrs_UNITS"])
 
         # formattedLi, fieldsLi, unitsLi  = SeaBASSWriter.formatData2(liData,'li',radianceGroup.attributes["LI_UNITS"])
         # formattedLt, fieldsLt, unitsLt  = SeaBASSWriter.formatData2(ltData,'lt',radianceGroup.attributes["LT_UNITS"])
 
         # # Write SeaBASS files
+        # Need to update headerBlock for BRDF
+        # headerBlock['BRDF_correction'] = SeaBASSHeader.settings['BRDF_correction']
+        BRDF_correction = SeaBASSHeader.settings['BRDF_correction']
+        headerBlock['BRDF_correction'] = 'noBRDF'
         SeaBASSWriter.writeSeaBASS('Rrs',fp,headerBlock,formattedRrs,fieldsRrs,unitsRrs)
         SeaBASSWriter.writeSeaBASS('Lwn',fp,headerBlock,formattednLw,fieldsnLw,unitsnLw)
         SeaBASSWriter.writeSeaBASS('Es',fp,headerBlock,formattedEs,fieldsEs,unitsEs)
+        SeaBASSHeader.settings['BRDF_correction'] = BRDF_correction # Changes headerBlock as well.
+
+
         if ConfigFile.settings['bL2BRDF']:
-            # Need to update headerBlock for BRDF
+            # Use M02 and L11 in filenames to avoid conflict with datatype "_IOP_"
             if ConfigFile.settings['bL2BRDF_fQ']:
-                headerBlock['BRDF_correction'] = 'M02'
-            SeaBASSWriter.writeSeaBASS('Lwnex',fp,headerBlock,formattednLw_BRDF,fieldsnLw_BRDF,unitsnLw_BRDF)
+                SeaBASSWriter.writeSeaBASS('Lwn_M02',fp,headerBlock,formattednLw_BRDF,fieldsnLw_BRDF,unitsnLw_BRDF)
+                SeaBASSWriter.writeSeaBASS('Rrs_M02',fp,headerBlock,formattedRrs_BRDF,fieldsRrs_BRDF,unitsRrs_BRDF)
+
+            if ConfigFile.settings['bL2BRDF_IOP']:
+                SeaBASSWriter.writeSeaBASS('Lwn_L11',fp,headerBlock,formattednLw_BRDF,fieldsnLw_BRDF,unitsnLw_BRDF)
+                SeaBASSWriter.writeSeaBASS('Rrs_L11',fp,headerBlock,formattedRrs_BRDF,fieldsRrs_BRDF,unitsRrs_BRDF)
+
+            if ConfigFile.settings['bL2BRDF_O23']:
+                SeaBASSWriter.writeSeaBASS('Lwn_O23',fp,headerBlock,formattednLw_BRDF,fieldsnLw_BRDF,unitsnLw_BRDF)
+                SeaBASSWriter.writeSeaBASS('Rrs_O23',fp,headerBlock,formattedRrs_BRDF,fieldsRrs_BRDF,unitsRrs_BRDF)
+
         # SeaBASSWriter.writeSeaBASS('LI',fp,headerBlock,formattedLi,fieldsLi,unitsLi)
         # SeaBASSWriter.writeSeaBASS('LT',fp,headerBlock,formattedLt,fieldsLt,unitsLt)
+
+        return headerBlock['data_file_name']

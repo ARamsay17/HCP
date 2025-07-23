@@ -35,9 +35,9 @@ class HDFDataset:
 
         # Read attributes
         for k in f.attrs.keys():
-            if type(f.attrs[k]) == np.ndarray:
+            if type(f.attrs[k]) == np.ndarray:  # noqa: E721
                 self.attributes[k] = f.attrs[k]
-            elif type(f.attrs[k]) == np.int32:
+            elif type(f.attrs[k]) == np.int32:  # noqa: E721
                 self.attributes[k] = f.attrs[k]
             else: # string attribute
                 self.attributes[k] = f.attrs[k].decode("utf-8")
@@ -71,6 +71,7 @@ class HDFDataset:
             self.columns[name] = [val]
         else:
             self.columns[name].append(val)
+        return self.columns[name]
 
     def datasetToColumns(self):
         ''' Converts numpy array into columns (stored as a dictionary) '''
@@ -113,6 +114,9 @@ class HDFDataset:
                     #dtype.append((name, h5py.special_dtype(vlen=str)))
                     dtype.append((name, "|S" + str(len(item))))
                     #dtype.append((name, np.dtype(str)))
+                elif isinstance(item, bool):
+                    dtype.append((name, bool))
+                    # with either bool or np.bool, the dtype in the data assignment for the np.empty below is '?'
                 # Note: hdf4 only supports 32 bit int, convert to float64
                 elif isinstance(item, int):
                     dtype.append((name, np.float64))

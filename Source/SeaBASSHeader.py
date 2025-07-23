@@ -48,6 +48,7 @@ class SeaBASSHeader:
         print("wave_height", SeaBASSHeader.settings["wave_height"])
         print("secchi_depth", SeaBASSHeader.settings["secchi_depth"])
         print("wind_speed", SeaBASSHeader.settings["wind_speed"])
+        print("nadir", SeaBASSHeader.settings["nadir"])
 
         print("rho_correction", SeaBASSHeader.settings["rho_correction"])
         print("NIR_residual_correction", SeaBASSHeader.settings["NIR_residual_correction"])
@@ -61,9 +62,9 @@ class SeaBASSHeader:
     # Generates the default configuration
     @staticmethod
     def createDefaultSeaBASSHeader(name):
-        print("SeaBASSHeader - Create Default SeaBASSHeader")
+        # print("SeaBASSHeader - Create Default SeaBASSHeader")
 
-        SeaBASSHeader.settings["version"] = 'R0'
+        SeaBASSHeader.settings["version"] = 'R1'
         SeaBASSHeader.settings["investigators"] = ''
         SeaBASSHeader.settings["affiliations"] = ''
         SeaBASSHeader.settings["contact"] = ''
@@ -71,7 +72,7 @@ class SeaBASSHeader:
         SeaBASSHeader.settings["cruise"] = name.split('.')[0] # I generally name configuration files after cruise.
         SeaBASSHeader.settings["platform"] = ''
 
-        SeaBASSHeader.settings["documents"] = ''
+        SeaBASSHeader.settings["documents"] = 'README.md'
 
         SeaBASSHeader.settings["instrument_manufacturer"] = ''
         SeaBASSHeader.settings["instrument_model"] = ''
@@ -101,6 +102,8 @@ class SeaBASSHeader:
         SeaBASSHeader.settings["east_longitude"] = ''
         SeaBASSHeader.settings["west_longitude"] = ''
 
+        SeaBASSHeader.settings["nadir"] = '40'
+
         SeaBASSHeader.settings["rho_correction"] = ''
         SeaBASSHeader.settings["NIR_residual_correction"] = ''
         SeaBASSHeader.settings["BRDF_correction"] = ''
@@ -129,15 +132,26 @@ class SeaBASSHeader:
         else:
             deglitchFilt = "Off"
 
-        if ConfigFile.settings['bL1bCal'] == 1:
+        if ConfigFile.settings['fL1bCal'] == 1:
             if ConfigFile.settings['SensorType'].lower() == 'seabird':
-                FRMPath = 'Non-FRM_Class-based'
+                FRMRegime = 'Non-FRM_Class-based'
             else:
-                FRMPath = 'Factory_Calibration'
-        elif ConfigFile.settings['bL1bCal'] == 2:
-            FRMPath = 'FRM_Class-based'
-        elif ConfigFile.settings['bL1bCal'] == 3:
-            FRMPath = 'FRM-Full-Characterization'
+                FRMRegime = 'Factory_Calibration'
+        elif ConfigFile.settings['fL1bCal'] == 2:
+            FRMRegime = 'FRM_Class-based'
+        elif ConfigFile.settings['fL1bCal'] == 3:
+            FRMRegime = 'FRM-Full-Characterization'
+        else:
+            FRMRegime = None
+
+        if ConfigFile.settings['fL1bThermal'] == 1:
+            ThermalSource = 'Internal_Thermistor'
+        elif ConfigFile.settings['fL1bThermal'] == 2:
+            ThermalSource = 'Air_Termperature'
+        elif ConfigFile.settings['fL1bThermal'] == 3:
+            ThermalSource = 'Caps_On_Dark_File'
+        else:
+            ThermalSource = None
 
         if ConfigFile.settings["bL1bqcEnableSpecQualityCheck"]:
             specFilt = "On"
@@ -170,6 +184,20 @@ class SeaBASSHeader:
         else:
             # NIRFilt = "Off"
             SeaBASSHeader.settings["NIR_residual_correction"] = 'NA'
+
+        if ConfigFile.settings["bL2BRDF"]:
+            if ConfigFile.settings["bL2BRDF_fQ"]:
+                # Morel 2002
+                SeaBASSHeader.settings["BRDF_correction"] = 'M02'
+            elif ConfigFile.settings["bL2BRDF_IOP"]:
+                # Lee 2011
+                SeaBASSHeader.settings["BRDF_correction"] = 'L11'
+            elif ConfigFile.settings["bL2BRDF_O23"]:
+                # Pitarch et al. 2025
+                SeaBASSHeader.settings["BRDF_correction"] = 'O23'
+        else:
+            SeaBASSHeader.settings["BRDF_correction"] = 'noBRDF'
+
         if ConfigFile.settings["bL2NegativeSpec"]:
             NegativeFilt = "On"
         else:
@@ -201,9 +229,13 @@ class SeaBASSHeader:
             f'! LT Light Window = {ConfigFile.settings["fL1aqcLTWindowLight"]}\n'+\
             f'! LT Dark Sigma = {ConfigFile.settings["fL1aqcLTSigmaDark"]}\n'+\
             f'! LT Light Sigma = {ConfigFile.settings["fL1aqcLTSigmaLight"]}\n'+\
-            f'! FRM Pathway = {FRMPath}\n'+\
+            f'! FRM Regime = {FRMRegime}\n'+\
+            f'! Thermal Source = {ThermalSource}\n'+\
             f'! Default Salt = {ConfigFile.settings["fL1bDefaultSalt"]}\n'+\
             f'! Default SST = {ConfigFile.settings["fL1bDefaultSST"]}\n'+\
+            f'! Default AOD = {ConfigFile.settings["fL1bDefaultAOD"]}\n'+\
+            f'! Default Wind = {ConfigFile.settings["fL1bDefaultWindSpeed"]}\n'+\
+            f'! Default AirTemp = {ConfigFile.settings["fL1bDefaultAirT"]}\n'+\
             f'! Wavelength Interp Int = {ConfigFile.settings["fL1bInterpInterval"]}\n'+\
             f'! Max Wind = {ConfigFile.settings["fL1bqcMaxWind"]}\n'+\
             f'! Min SZA = {ConfigFile.settings["fL1bqcSZAMin"]}\n'+\
@@ -223,17 +255,18 @@ class SeaBASSHeader:
             f'! Remove Negatives = {NegativeFilt}'
             # f'! Processing DateTime = {time.asctime()}'
 
-        SeaBASSHeader.settings["other_comments"] = f'!\n'\
+        SeaBASSHeader.settings["other_comments"] = '!\n'\
             '! Other comments...\n'\
             '!'
 
         SeaBASSHeader.settings["missing"] = -9999
         SeaBASSHeader.settings["delimiter"] = 'comma'
 
-        if not name.endswith(".hdr"):
-            name = name + ".hdr"
-        SeaBASSHeader.filename = name
-        SeaBASSHeader.saveSeaBASSHeader(name)
+        if name != "temp":
+            if not name.endswith(".hdr"):
+                name = name + ".hdr"
+            SeaBASSHeader.filename = name
+            SeaBASSHeader.saveSeaBASSHeader(name)
 
 
     # Saves the hdr file
@@ -241,25 +274,31 @@ class SeaBASSHeader:
     def saveSeaBASSHeader(filename):
         print("SeaBASSHeader - Save SeaBASSHeader")
 
-        jsn = json.dumps(SeaBASSHeader.settings)
         fp = os.path.join(PATH_TO_CONFIG, filename)
 
-        #print(os.path.abspath(os.curdir))
-        with open(fp, 'w') as f:
-            f.write(jsn)
-        # SeaBASSHeader.createCalibrationFolder()
+        with open(fp, 'w', encoding="utf-8") as f:
+            json.dump(SeaBASSHeader.settings,f,indent=4)
 
     # Loads the hdr file
     @staticmethod
     def loadSeaBASSHeader(filename):
+        # To accomodate new header fields with old headers, start with default.
+        #   Eliminate obsolete headers
+        SeaBASSHeader.createDefaultSeaBASSHeader("temp")
+        goodSettingsKeys = SeaBASSHeader.settings.keys()
+
         # print("SeaBASSHeader - Load seaBASSHeader")
         seaBASSHeaderPath = os.path.join(PATH_TO_CONFIG, filename)
         if os.path.isfile(seaBASSHeaderPath):
             SeaBASSHeader.filename = filename
             text = ""
-            with open(seaBASSHeaderPath, 'r') as f:
+            with open(seaBASSHeaderPath, 'r', encoding="utf-8") as f:
                 text = f.read()
-                SeaBASSHeader.settings = json.loads(text, object_pairs_hook=collections.OrderedDict)
+                # SeaBASSHeader.settings = json.loads(text, object_pairs_hook=collections.OrderedDict)
+                fullCollection = json.loads(text, object_pairs_hook=collections.OrderedDict)
+                for key, value in fullCollection.items():
+                    if key in goodSettingsKeys:
+                        SeaBASSHeader.settings[key] = value
                 # SeaBASSHeader.createCalibrationFolder()
 
     # Deletes a seaBASSHeader
@@ -274,10 +313,10 @@ class SeaBASSHeader:
 
     @staticmethod
     def refreshCalibrationFiles():
-        print("SeaBASSHeader - refreshCalibrationFiles")
+        # print("SeaBASSHeader - refreshCalibrationFiles")
         calibrationPath = ConfigFile.getCalibrationDirectory()
         files = os.listdir(calibrationPath)
-        if ConfigFile.settings['bL1bCal'] != 3:
+        if ConfigFile.settings['fL1bCal'] != 3:
             # Only keep the full characterization files if running Full FRM
             files = [item for item in files if not item.startswith('CP')]
 

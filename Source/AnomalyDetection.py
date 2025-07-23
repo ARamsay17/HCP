@@ -1,9 +1,9 @@
+'''Deglitching of L1AQC radiometry time series'''
 import os
 import sys
 import csv
-import numpy as np
-
 import warnings
+import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 import pyqtgraph as pg
 
@@ -12,12 +12,12 @@ from Source.Controller import Controller
 from Source.MainConfig import MainConfig
 from Source.ConfigFile import ConfigFile
 from Source.HDFRoot import HDFRoot
-from Source.HDFDataset import HDFDataset
 from Source.Utilities import Utilities
 from Source.FieldPhotos import FieldPhotos
 from Source.CalibrationFileReader import CalibrationFileReader
 
 class AnomAnalWindow(QtWidgets.QDialog):
+    '''Anomaly Analysis supervised screening and deglitching GUI'''
 
     def __init__(self, inputDirectory, parent=None):
         super().__init__(parent)
@@ -27,9 +27,15 @@ class AnomAnalWindow(QtWidgets.QDialog):
         self.setModal(True)
         self.sensor='ES'
         self.sliderWave=525
+        self.fileName = None
+        self.root = None
+        self.start = None
+        self.end = None
+        self.photoList = None
+        self.photoDT = None
 
         #   This is going to truncate the ancillary data, so for the purposes of re-use, copy it
-        self.ancillaryData = Controller.processAncData(MainConfig.settings["metFile"])
+        self.ancillaryData = Controller.processAncData(MainConfig.settings["ancFile"])
 
         pg.setConfigOption('background', 'w')
         pg.setConfigOption('foreground', 'k')
@@ -66,10 +72,10 @@ class AnomAnalWindow(QtWidgets.QDialog):
         # Set up the User Interface
         self.initUI()
 
-    def paint(self, p, *args):
-        p.setPen(pg.mkPen(0, 0, 0, 100))
-        p.setBrush(pg.mkBrush(255, 255, 255, 50))
-        p.viewRect()
+    # def paint(self, p, *args):
+    #     p.setPen(pg.mkPen(0, 0, 0, 100))
+    #     p.setBrush(pg.mkBrush(255, 255, 255, 50))
+    #     p.viewRect()
 
     def initUI(self):
 
@@ -270,6 +276,11 @@ class AnomAnalWindow(QtWidgets.QDialog):
             WL = 13
             SD = 3.2
             SL = 2.7
+        else:
+            WD = None
+            WL = None
+            SD = None
+            SL = None
 
         self.WindowDarkLabel.setText(f'Window (odd;{WD})')
         self.WindowLightLabel.setText(f'Window (odd;{WL})')
@@ -390,6 +401,7 @@ class AnomAnalWindow(QtWidgets.QDialog):
         # tz = pFormat[-5:] # clumsy hardcoding of TZ pFormat: Must be the last 5 characters
         # pFormat = pFormat[0:-5]
         self.photoFP = os.path.join(self.inputDirectory, 'Photos')
+        # print(self.photoFP)
         if os.path.isdir(self.photoFP) is False:
             os.mkdir(self.photoFP)
         # photoList, self.photoDT = FieldPhotos.photoSetup(self.photoFP, self.start, self.end, pFormat, tz)
@@ -418,7 +430,7 @@ class AnomAnalWindow(QtWidgets.QDialog):
         inputDirectory = self.inputDirectory
         # Open L1A HDF5 file for Deglitching
 
-        self.sensor == "ES"
+        # self.sensor == "ES"
 
         inLevel = "L1A"
         subInputDir = os.path.join(inputDirectory + '/' + inLevel + '/')
@@ -434,13 +446,13 @@ class AnomAnalWindow(QtWidgets.QDialog):
                     options=QtWidgets.QFileDialog.DontUseNativeDialog)
         try:
             print(inFilePath[0])
-            if not "hdf" in inFilePath[0] and not "HDF" in inFilePath[0]:
+            if "hdf" not in inFilePath[0] and "HDF" not in inFilePath[0]:
                 msg = "This does not appear to be an HDF file."
                 Utilities.errorWindow("File Error", msg)
                 print(msg)
                 return
-        except:
-            print('No file returned')
+        except Exception as err:
+            print(f'No file returned: {err}')
             return
 
         root = HDFRoot.readHDF5(inFilePath[0])
@@ -450,8 +462,7 @@ class AnomAnalWindow(QtWidgets.QDialog):
             print(msg)
             return
 
-        # Process L1A to L1AQC with no deglitching
-        flag_Trios = 0
+        # Process L1A to L1AQC with no deglitching        
         fileName = os.path.basename(os.path.splitext(inFilePath[0])[0]).replace("_L1A","_L1AQC")+".hdf"
         calibrationMap = Controller.processCalibrationConfig(ConfigFile.filename, ConfigFile.settings['CalibrationFiles'])
         outputDirectory = MainConfig.settings['outDir']
@@ -462,7 +473,7 @@ class AnomAnalWindow(QtWidgets.QDialog):
             os.mkdir(pathOutLevel)
         temp = ConfigFile.settings['bL1aqcDeglitch']
         ConfigFile.settings['bL1aqcDeglitch'] = 0
-        root = Controller.processL1aqc(inFilePath[0], outFilePath, calibrationMap, self.ancillaryData,flag_Trios)
+        root = Controller.processL1aqc(inFilePath[0], outFilePath, calibrationMap, self.ancillaryData)
 
         if root is None:
             msg = "L1A file fails basic L1AQC."
@@ -503,16 +514,14 @@ class AnomAnalWindow(QtWidgets.QDialog):
             self.commentLineEdit.setText(self.params[self.fileName][31])
             if getattr(self,'Threshold') == 1:
                 self.ThresholdCheckBox.setChecked(True)
-                # if getattr(self,f'{self.sensor}MinMaxBandDark'):
-                #     self.waveBand = getattr(self,f'{self.sensor}MinMaxBandDark')
-                #     self.slider.setValue(self.waveBand)
-                # if getattr(self,f'{self.sensor}MinMaxBandLight'):
-                #     self.waveBand = getattr(self,f'{self.sensor}MinMaxBandLight')
-                #     self.slider.setValue(self.waveBand)
             else:
                 self.ThresholdCheckBox.setChecked(False)
             self.ThresholdCheckBoxUpdate()
         else:
+            # NOTE: This falls back on whatever was last used for this configuration as saved in the
+            #   ConfigFile. This makes it possible to run many files in a cruise and stop when
+            #   the parameterizations converge and stop changing. Not ideal, because unscreened
+            #   files may have additional, uncaptured anomalies atypical of the cruise configuration.
             print(f'{self.fileName} not found in {self.anomAnalFileName}. Falling back to Config settings')
 
         # Set the GUI parameters for the current sensor from the local object
@@ -528,6 +537,7 @@ class AnomAnalWindow(QtWidgets.QDialog):
         # Add an information bar based on metadata
         self.start = None
         self.end = None
+        ancGroup, gpsGroup, trackerGroup = None, None, None
         for group in root.groups:
             if group.id == 'ANCILLARY_METADATA':
                 ancGroup = group
@@ -535,8 +545,8 @@ class AnomAnalWindow(QtWidgets.QDialog):
                 gpsGroup = group
                 self.start = gpsGroup.datasets['DATETIME'].data[0]
                 self.end = gpsGroup.datasets['DATETIME'].data[-1]
-            if group.id == "SOLARTRACKER" or group.id == "SOLARTRACKER_pySAS":
-                    trackerGroup = group
+            if group.id.startswith("SunTracker"):
+                trackerGroup = group
 
         # For case of no GPS
         if self.start is None:
@@ -631,7 +641,7 @@ class AnomAnalWindow(QtWidgets.QDialog):
         radioButton = self.sender()
         if radioButton.isChecked():
             self.sensor = radioButton.text()
-            print("Sensor is %s" % (self.sensor))
+            print(f"Sensor is {self.sensor}")
             # Now update the LineEdits with saved values in the local object
             self.WindowDarkLineEdit.setText(str(getattr(self,f'{self.sensor}WindowDark')))
             self.WindowLightLineEdit.setText(str(getattr(self,f'{self.sensor}WindowLight')))
@@ -659,6 +669,11 @@ class AnomAnalWindow(QtWidgets.QDialog):
                 WL = 13
                 SD = 3.2
                 SL = 2.7
+            else:
+                WD = None
+                WL = None
+                SD = None
+                SL = None
 
             self.WindowDarkLabel.setText(f'Window (odd;{WD})')
             self.WindowLightLabel.setText(f'Window (odd;{WL})')
@@ -708,8 +723,12 @@ class AnomAnalWindow(QtWidgets.QDialog):
 
         darkData = None
         lightData = None
+        darkDateTime = None
+        lightDateTime = None
         # Extract Light & Dark datasets from the sensor group
         for gp in self.root.groups:
+            if "FrameType" not in gp.attributes:
+                continue
             if gp.attributes["FrameType"] == "ShutterDark" and sensorType in gp.datasets:
                 darkData = gp.getDataset(sensorType)
                 darkDateTime = Utilities.getDateTime(gp)
@@ -741,7 +760,8 @@ class AnomAnalWindow(QtWidgets.QDialog):
 
             radiometry1D = dark2D[f'{self.waveBand:03.2f}']
 
-            self.realTimePlot(self, radiometry1D, darkDateTime, sensorType,lightDark)
+            # self.realTimePlot(self, radiometry1D, darkDateTime, sensorType,lightDark)
+            AnomAnalWindow.realTimePlot(self, radiometry1D, darkDateTime, sensorType,lightDark)
 
         # Update the slider
         self.sLabel.setText(f'Deglitching only performed from 350-850 nm: {self.waveBand}')
@@ -768,7 +788,8 @@ class AnomAnalWindow(QtWidgets.QDialog):
             radiometry1D = light2D[f'{self.waveBand:03.2f}']
             # print(self.waveBand)
 
-            self.realTimePlot(self, radiometry1D, lightDateTime, sensorType, lightDark)
+            # self.realTimePlot(self, radiometry1D, lightDateTime, sensorType, lightDark)
+            AnomAnalWindow.realTimePlot(self, radiometry1D, lightDateTime, sensorType, lightDark)
 
         # Now run the deglitcher for all wavebands light and dark to calculate the % loss to the data from this sensor
         # Darks
@@ -856,8 +877,8 @@ class AnomAnalWindow(QtWidgets.QDialog):
             params.append(getattr(self,f'{sensor}MaxLight'))
             params.append(getattr(self,f'{sensor}MinMaxBandLight'))
 
-        ConfigFile.settings[f'bL1aqcThreshold'] = getattr(self,f'Threshold')
-        params.append(getattr(self,f'Threshold'))
+        ConfigFile.settings['bL1aqcThreshold'] = getattr(self,'Threshold')
+        params.append(getattr(self,'Threshold'))
         params.append(self.commentLineEdit.text())
 
         self.params[self.fileName] = params
@@ -879,12 +900,12 @@ class AnomAnalWindow(QtWidgets.QDialog):
         # fieldnames = params.keys()
 
         print(f'Saving {filePath}')
-        with open(filePath, 'w', newline='') as csvfile:
+        with open(filePath, 'w', newline='', encoding="utf-8") as csvfile:
             paramwriter = csv.writer(csvfile, delimiter=',',
                                 quotechar='|', quoting=csv.QUOTE_MINIMAL)
             paramwriter.writerow(header)
             for key, values in self.params.items():
-                values = [-999 if v==None else v for v in values]
+                values = [-999 if v is None else v for v in values]
                 paramwriter.writerow([key]+values)
 
     def plotButtonPressed(self):
@@ -898,8 +919,14 @@ class AnomAnalWindow(QtWidgets.QDialog):
             print(sensorType)
             darkData = None
             lightData = None
-
+            darkDateTime = None
+            lightDateTime = None
+            globBad = None
+            globBad2 = None
+            globBad3 = None
             for gp in self.root.groups:
+                if "FrameType" not in gp.attributes:
+                    continue
                 if gp.attributes["FrameType"] == "ShutterDark" and sensorType in gp.datasets:
                     darkData = gp.getDataset(sensorType)
                     darkDateTime = Utilities.getDateTime(gp)
@@ -992,7 +1019,7 @@ class AnomAnalWindow(QtWidgets.QDialog):
 
                 # Collapse the badIndexes from all wavebands into one timeseries
                 # Convert to an array and test along the columns (i.e. each timestamp)
-                gIndex = np.any(np.array(globalBadIndex), 0)
+                # gIndex = np.any(np.array(globalBadIndex), 0)
                 # NOTE: if you similarly collapse globBads 1-3, you should get the same result as gIndex
 
                 # Now plot a selection of these USING UNIVERSALLY EXCLUDED INDEXES
@@ -1017,14 +1044,14 @@ class AnomAnalWindow(QtWidgets.QDialog):
 
         # Jumpstart the logger:
         msg = "Process Single Level from Anomaly Analysis"
-        os.environ["LOGFILE"] = (fileBaseName + '_L1A_L1AQC.log')
+        os.environ["LOGFILE"] = fileBaseName + '_L1A_L1AQC.log'
         Utilities.writeLogFile(msg,mode='w') # <<---- Logging initiated here
 
         calFolder = os.path.splitext(ConfigFile.filename)[0] + "_Calibration"
         calPath = os.path.join(PATH_TO_CONFIG, calFolder)
         print("Read CalibrationFile ", calPath)
         calibrationMap = CalibrationFileReader.read(calPath)
-        root = Controller.processL1aqc(inFilePath, outFilePath, calibrationMap, self.ancillaryData, flag_Trios=0)
+        root = Controller.processL1aqc(inFilePath, outFilePath, calibrationMap, self.ancillaryData)
         # Restore full ancillary data
         self.ancillaryData = self.ancillaryDataComplete
 
@@ -1043,7 +1070,7 @@ class AnomAnalWindow(QtWidgets.QDialog):
     def ThresholdCheckBoxUpdate(self):
         print("ThresholdCheckBoxUpdate")
 
-        disabled = (not self.ThresholdCheckBox.isChecked())
+        disabled = not self.ThresholdCheckBox.isChecked()
         self.MinDarkLineEdit.setDisabled(disabled)
         self.MaxDarkLineEdit.setDisabled(disabled)
         self.MinLightLineEdit.setDisabled(disabled)
@@ -1101,7 +1128,7 @@ class AnomAnalWindow(QtWidgets.QDialog):
         # self.MinMaxLightLabel.setText(str(self.waveBand) +'nm' )
 
 
-    @staticmethod
+    # @staticmethod
     def realTimePlot(self, radiometry1D, dateTime, sensorType,lightDark):
         # Radiometry at this point is 1D 'column' from the appropriate group/dataset/waveband
         #   in time (radiometry1D)
@@ -1192,7 +1219,6 @@ class AnomAnalWindow(QtWidgets.QDialog):
             ph3rd.setData(x_anomaly3, y_anomaly3, symbolPen='c',symbol='o', symbolBrush=None, name='Threshold exceeded')
 
 
-        except:
+        except Exception:
             e = sys.exc_info()[0]
-            print("Error: %s" % e)
-
+            print(f"Error: {e}")

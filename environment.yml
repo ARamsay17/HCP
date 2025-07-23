@@ -1,14 +1,14 @@
 name: hypercp
 channels:
-  - defaults
   - conda-forge
+  - defaults
   - ocdb
 dependencies:
   - python=3.11
   - pyqt=5.15
   - requests=2.28
   - tqdm=4.65
-  - numpy=1.23
+  - numpy=1
   - h5py=3.7
   - pytz=2022.7
   - matplotlib
@@ -16,14 +16,15 @@ dependencies:
   - pandas=1.5
   - pysolar=0.10
   - xarray
-  - cdsapi=0.6
+  - cdsapi>=0.7.2
   - netcdf4=1.6
-  - py6s=1.9
+  - j6s
   - pytables=3.7
-  - pyspectral=0.12
+  - pyspectral=0.12.5
   - pyqtgraph
   - ocdb-client
   - pip
   - pip:
+    - comet_maths<=1.0.3
     - punpy
     - fpdf2
