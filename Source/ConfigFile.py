@@ -19,16 +19,12 @@ class ConfigFile:
     # Creates the calibration file folder if not exist
     @staticmethod
     def createCalibrationFolder():
-        #print("ConfigFile - createCalibrationFolder")
-        fp = ConfigFile.getCalibrationDirectory()
-        os.makedirs(fp, exist_ok=True)
-
+        os.makedirs(ConfigFile.getCalibrationDirectory(), exist_ok=True)
 
     # Generates the default configuration
     @staticmethod
     def createDefaultConfig(fileName, new=1):
         # fileName: the filename of the configuration file without path
-        # if new==1:
         print("ConfigFile - Create Default Config, or fill in newly added parameters with default values.")
 
         if not fileName.endswith(".cfg"):
@@ -103,12 +99,25 @@ class ConfigFile:
         ConfigFile.settings["bL1bGetAnc"] = 0
         ConfigFile.settings["fL1bDefaultWindSpeed"] = 5.0
         ConfigFile.settings["fL1bDefaultAOD"] = 0.2
+        ConfigFile.settings["fL1bDefaultAirT"] = 26.0
         ConfigFile.settings["fL1bDefaultSalt"] = 35.0
         ConfigFile.settings["fL1bDefaultSST"] = 26.0
-        ConfigFile.settings["bL1bCal"] = 1  # 1 for Factory, 2 for Class, 3 for Instrument Full
-        ConfigFile.settings["FullCalDir"] = PACKAGE_DIR
-        ConfigFile.settings['RadCalDir'] = PACKAGE_DIR
-        ConfigFile.settings['FidRadDB'] = 0
+        ConfigFile.settings["fL1bCal"] = 1  # 1 for Factory, 2 for Class, 3 for Instrument Full
+        ConfigFile.settings["fL1bThermal"] = 2  # 1 for internal thermistor, 2 for airTemp-based, 3 for caps-on darks
+
+        # # Cal/char directory (inclusing FidRadDB cal/chars for config)
+        # ConfigFile.settings["calibrationPath"] = ConfigFile.getCalibrationDirectory()#PATH_TO_CONFIG#PACKAGE_DIR
+
+        # Cal/char directory (needed FidRadDB cal/chars for the full FRM cal/char regime)
+        ConfigFile.settings['neededCalCharsFRM'] = {}
+
+        # Multical config defaults
+        ConfigFile.settings['MultiCal'] = 0 # 0: most recent prior to acquisition, 1: pre-post average, 2: choose cal
+        for multiCalOpt in ['preCal', 'postCal', 'chooseCal']:
+            for sensorType in ['ES', 'LT', 'LI']:
+                # RADCAL filename instead if selected in Source/CalCharWindow.py options.
+                ConfigFile.settings['%s_%s' % (multiCalOpt, sensorType)] = None
+
 
         ConfigFile.settings["fL1bInterpInterval"] = 3.3 #3.3 is nominal HyperOCR; Brewin 2016 uses 3.5 nm
         ConfigFile.settings["bL1bPlotTimeInterp"] = 0
@@ -151,6 +160,7 @@ class ConfigFile:
         ConfigFile.settings["bL2BRDF"] = 0
         ConfigFile.settings["bL2BRDF_fQ"] = 0
         ConfigFile.settings["bL2BRDF_IOP"] = 0
+        ConfigFile.settings["bL2BRDF_O23"] = 0
 
         ConfigFile.settings["bL2WeightMODISA"] = 0
         ConfigFile.settings["bL2WeightSentinel3A"] = 0
@@ -167,7 +177,7 @@ class ConfigFile:
 
         ConfigFile.settings["bL2UncertaintyBreakdownPlot"] = 0
 
-        ConfigFile.products["bL2PlotProd"] = 0
+        ConfigFile.products["bL2PlotProd"] = 1
         ConfigFile.products["bL2Prodoc3m"] = 0
         ConfigFile.products["bL2Prodkd490"] = 0
         ConfigFile.products["bL2Prodpic"] = 0
@@ -224,8 +234,7 @@ class ConfigFile:
         print(f"ConfigFile - Save Config: {filename}")
         ConfigFile.filename = filename
         params = dict(ConfigFile.settings, **ConfigFile.products)
-        params['FullCalDir'] = os.path.relpath(params['FullCalDir'])
-        params['RadCalDir'] = os.path.relpath(params['RadCalDir'])
+        # params['calibrationPath'] = os.path.relpath(params['calibrationPath'])
         fp = os.path.join(PATH_TO_CONFIG, filename)
 
         with open(fp, 'w', encoding="utf-8") as f:
@@ -283,9 +292,8 @@ class ConfigFile:
                 os.remove(seabassPath)
         if os.path.isfile(configPath):
             ConfigFile.filename = filename
-            calibrationPath = ConfigFile.getCalibrationDirectory()
             os.remove(configPath)
-            shutil.rmtree(calibrationPath)
+            shutil.rmtree(ConfigFile.getCalibrationDirectory())
         if os.path.isfile(seabassPath):
             os.remove()
 
@@ -300,8 +308,7 @@ class ConfigFile:
     @staticmethod
     def refreshCalibrationFiles():
         print("ConfigFile - refreshCalibrationFiles")
-        calibrationPath = ConfigFile.getCalibrationDirectory()
-        files = os.listdir(calibrationPath)
+        files = os.listdir(ConfigFile.getCalibrationDirectory())
 
         newCalibrationFiles = {}
         calibrationFiles = ConfigFile.settings["CalibrationFiles"]

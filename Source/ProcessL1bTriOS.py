@@ -12,7 +12,7 @@ from Source.ProcessL1b_Interp import ProcessL1b_Interp
 from Source.Utilities import Utilities
 from Source.GetAnc import GetAnc
 from Source.GetAnc_ecmwf import GetAnc_ecmwf
-from Source.FidradDB_api import FidradDB_api
+from Source import PACKAGE_DIR as CODE_HOME
 
 
 class ProcessL1bTriOS:
@@ -22,6 +22,7 @@ class ProcessL1bTriOS:
     def processDarkCorrection_FRM(node, sensortype, stats: dict):
         # Dark & Calibration process for FRM branch using Full Characterisation from TO,
         # and with additional correction for (non-linearity, straylight, ...)
+        # NOTE: See processDarkCorrection (non-FRM) for detailed comments linking to RAMSES manual Rel. 1.1
 
         ### Read HDF file inputs
         # grp = node.getGroup(instrument_number+'.dat')
@@ -81,15 +82,18 @@ class ProcessL1bTriOS:
             updated_radcal_gain = (np.pi*S12_sl_corr)/(LAMP*PANEL) * (int_time_t0/t1)
 
         # sensitivity factor : if gain==0 (or NaN), no calibration is performed and data is affected to 0
-        ind_zero = (updated_radcal_gain<=1e-2)
+        ind_zero = updated_radcal_gain<=1e-2
         ind_nan  = np.isnan(updated_radcal_gain)
         ind_nocal = ind_nan | ind_zero
-        updated_radcal_gain[ind_nocal==True] = 1 # set 1 instead of 0 to perform calibration (otherwise division per 0)
+        updated_radcal_gain[ind_nocal] = 1 # set 1 instead of 0 to perform calibration (otherwise division per 0)
 
         # Data conversion
         mesure = raw_data/65535.0
         FRM_mesure = np.zeros((nmes, nband))
         back_mesure = np.zeros((nmes, nband))
+
+        ancGroup = node.getGroup('ANCILLARY_METADATA')
+        sza = ancGroup.datasets['SZA'].columns['NONE']
         for n in range(nmes):
             # Background correction : B0 and B1 read from full charaterisation
             back_mesure[n,:] = B0 + B1*(int_time[n]/int_time_t0)
@@ -119,21 +123,23 @@ class ProcessL1bTriOS:
             # Cosine correction : commented for the moment
             if sensortype == "ES":
                 # retrive sixS variables for given wvl
-                solar_zenith = res_sixS['solar_zenith'][n]
+                # solar_zenith = res_sixS['solar_zenith'][n]
+                solar_zenith = sza[0]
                 direct_ratio = res_sixS['direct_ratio'][n]
                 diffuse_ratio = res_sixS['diffuse_ratio'][n]
                 ind_closest_zen = np.argmin(np.abs(zenith_ang-solar_zenith))
                 cos_corr = 1-avg_coserror[:,ind_closest_zen]/100
                 Fhcorr = 1-full_hemi_coserror/100
-                cos_corr_mesure = (direct_ratio*thermal_corr_mesure*cos_corr) + ((1-direct_ratio)*thermal_corr_mesure*Fhcorr)
+                cos_corr_mesure = (direct_ratio*thermal_corr_mesure*cos_corr) + \
+                    ((1-direct_ratio)*thermal_corr_mesure*Fhcorr)
                 FRM_mesure[n,:] = cos_corr_mesure
             else:
                 FRM_mesure[n,:] = thermal_corr_mesure
 
         # Remove wvl without calibration from the dataset
         # unit conversion from mW/m2 to uW/cm2 : divide per 10
-        filtered_mesure = FRM_mesure[:,ind_nocal==False]/10
-        filtered_wvl = str_wvl[ind_nocal==False]
+        filtered_mesure = FRM_mesure[:,~ind_nocal]/10
+        filtered_wvl = str_wvl[~ind_nocal]
 
         # Replace raw data with calibrated data in hdf root
         ds_dt = np.dtype({'names': filtered_wvl,'formats': [np.float64]*len(filtered_wvl)})
@@ -160,10 +166,10 @@ class ProcessL1bTriOS:
         if sensortype == "ES":
             # retrive sixS variables for given wvl
             solar_zenith = res_sixS['solar_zenith']
-            direct_ratio = res_sixS['direct_ratio'][:,ind_nocal==False]
-            diffuse_ratio = res_sixS['diffuse_ratio'][:,ind_nocal==False]
+            direct_ratio = res_sixS['direct_ratio'][:,~ind_nocal]
+            diffuse_ratio = res_sixS['diffuse_ratio'][:,~ind_nocal]
             # SIXS model irradiance is in W/m^2/um, scale by 10 to match HCP units
-            model_irr = (res_sixS['direct_irr']+res_sixS['diffuse_irr']+res_sixS['env_irr'])[:,ind_nocal==False]/10
+            model_irr = (res_sixS['direct_irr']+res_sixS['diffuse_irr']+res_sixS['env_irr'])[:,~ind_nocal]/10
 
             sixS_grp = node.addGroup("SIXS_MODEL")
             for dsname in ["DATETAG", "TIMETAG2", "DATETIME"]:
@@ -194,22 +200,33 @@ class ProcessL1bTriOS:
 
     @staticmethod
     def processDarkCorrection(node, sensortype, stats: dict):
-        # Dark correction performed for each trios radiometers
+        # Dark correction and Calibration performed for each trios radiometers
         # Instrument serial number and associated frame type are read in configuration
         # return the wvl of dark pixel for which no calibration factor is defined
 
+        # Offset subtraction is a combination of Background data (B; lab-based, full spectrum)
+        #   and electronic offset (field-based, blackened pixels only)
+
         # Read HDF file inputs
-        # grp = node.getGroup(instrument_number+'.dat')
         grp = node.getGroup(sensortype)
         grp.getDataset("CAL_"+sensortype).datasetToColumns()
+
+        # Sensitivity based on lamp calibration; S(pixel) in RAMSES manual
         raw_cal = np.array(grp.getDataset("CAL_"+sensortype).columns['0'])
-        # raw_cal  = np.array(grp.getDataset("CAL_"+sensortype).data.tolist())
+
+        # raw_back contains B0 and B1 columns (derives B(pixel), see below), presumably from occluded sensor during lab cals
         raw_back = np.asarray(grp.getDataset("BACK_"+sensortype).data.tolist())
+
+        # 16-bit unsigned integer data, non-normalized: I(pixel,n) in the RAMSES manual
         raw_data = np.asarray(grp.getDataset(sensortype).data.tolist())
         raw_wvl = np.array(pd.DataFrame(grp.getDataset(sensortype).data).columns)
+        # Field integration time
         int_time = np.asarray(grp.getDataset("INTTIME").data.tolist())
+
         DarkPixelStart = int(grp.attributes["DarkPixelStart"])
         DarkPixelStop  = int(grp.attributes["DarkPixelStop"])
+
+        # Backround lab integration time (8192 ms). Not to be confused with lamp calibration integration time.
         int_time_t0 = int(grp.getDataset("BACK_"+sensortype).attributes["IntegrationTime"])
 
         # check size of data
@@ -221,37 +238,46 @@ class ProcessL1bTriOS:
             return False
 
         # sensitivity factor : if raw_cal==0 (or NaN), no calibration is performed and data is affected to 0
-        ind_zero = (raw_cal==0)
+        ind_zero = raw_cal==0
         ind_nan  = np.isnan(raw_cal)
         ind_nocal = ind_nan | ind_zero
-        raw_cal[ind_nocal==True] = 1 # set 1 instead of 0 to perform calibration (otherwise division per 0)
+        raw_cal[ind_nocal] = 1          # set 1 instead of 0 to perform calibration (otherwise division per 0)
 
         # Data conversion
+        #   M(pixel,n) = I(pixel,n)/65535; referred to as "raw data" in the RAMSES manual
         mesure = raw_data/65535.0
         calibrated_mesure = np.zeros((nmes, nband))
         back_mesure = np.zeros((nmes, nband))
+
         for n in range(nmes):
-            # Background correction : B0 and B1 read from "back data"
+            # Background correction : B0 and B1 read from "back data" yields
+            #   B(pixel) normalized for the field int_time(n)
+            #   B(pix,n) = B0(pix) + B1(pix)*(t(n)/t0)
             back_mesure[n,:] = raw_back[:,0] +  raw_back[:,1]*(int_time[n]/int_time_t0)
+
+            # C(pix,n) = M(pix,n) - B(pix,n)
             back_corrected_mesure = mesure[n] - back_mesure[n,:]
 
             # Offset substraction : dark index read from attribute
+            #   mean(C(dark_pixels,n))
             offset = np.mean(back_corrected_mesure[DarkPixelStart:DarkPixelStop])
+
+            # D(pix,n) = C(pix,n) - Offset
+            #   C is corrected for lab dark already, so offset is additional noise in the signal
             offset_corrected_mesure = back_corrected_mesure - offset
 
             # Normalization for integration time
+            #   E(pix,n) = D(pix,n)*(t0/t(n))
             normalized_mesure = offset_corrected_mesure * int_time_t0/int_time[n]
 
             # Sensitivity calibration
+            #   F(pix,n) = E(pix,n)/S(pix)
             calibrated_mesure[n,:] = normalized_mesure/raw_cal
-
-            # # When no calibration available, set data to 0.
-            # calibrated_mesure[n, ind_nocal==True] = 0.  # not used at the moment
 
         # Remove wvl without calibration from the dataset
         # unit conversion from mW/m2 to uW/cm2 : divide per 10
-        filtered_mesure = calibrated_mesure[:,ind_nocal==False]/10
-        filtered_wvl = raw_wvl[ind_nocal==False]
+        filtered_mesure = calibrated_mesure[:,~ind_nocal]/10
+        filtered_wvl = raw_wvl[~ind_nocal]
 
         # replace raw data with calibrated data in hdf root
         ds_dt = np.dtype({'names': filtered_wvl,'formats': [np.float64]*len(filtered_wvl)})
@@ -288,16 +314,14 @@ class ProcessL1bTriOS:
         timestr = now.strftime("%d-%b-%Y %H:%M:%S")
         node.attributes["FILE_CREATION_TIME"] = timestr
         node.attributes['WAVE_INTERP'] = str(ConfigFile.settings['fL1bInterpInterval']) + ' nm'
-        if ConfigFile.settings["bL1bCal"] == 1:
+        if ConfigFile.settings["fL1bCal"] == 1:
             node.attributes['CAL_TYPE'] = 'Factory'
-        elif ConfigFile.settings["bL1bCal"] == 2:
+        elif ConfigFile.settings["fL1bCal"] == 2:
             node.attributes['CAL_TYPE'] = 'FRM-Class'
-        elif ConfigFile.settings["bL1bCal"] == 3:
+        elif ConfigFile.settings["fL1bCal"] == 3:
             node.attributes['CAL_TYPE'] = 'FRM-Full'
 
-        msg = f"ProcessL1bTriOS.processL1b: {timestr}"
-        print(msg)
-        Utilities.writeLogFile(msg)
+        Utilities.writeLogFileAndPrint(f"ProcessL1bTriOS.processL1b: {timestr}")
 
         # Retain L1BQC data for L2 instrument uncertainty analysis
         for gp in node.groups:
@@ -315,77 +339,20 @@ class ProcessL1bTriOS:
         # Add a dataset to each group for DATETIME, as defined by TIMETAG2 and DATETAG
         node  = Utilities.rootAddDateTime(node)
 
-        # classbased_dir needed for FRM whilst pol is handled in class-based way
-        classbased_dir = os.path.join(PATH_TO_DATA, 'Class_Based_Characterizations',
-                                      ConfigFile.settings['SensorType'] + "_initial")
-
-        # Add Class-based characterization files if needed (RAW_UNCERTAINTIES)
-        if ConfigFile.settings['bL1bCal'] == 1:
-            print("Factory TriOS RAMSES - no uncertainty computation")
-
-        # Add Class-based characterization files + RADCAL files
-        elif ConfigFile.settings['bL1bCal'] == 2:
-            radcal_dir = ConfigFile.settings['RadCalDir']
-            print("Class-Based - uncertainty computed from class-based and RADCAL")
-            print('Class-Based:', classbased_dir)
-            print('RADCAL:', radcal_dir)
-            node = ProcessL1b.read_unc_coefficient_class(node, classbased_dir, radcal_dir)
-            if node is None:
-                msg = 'Error running class based uncertainties.'
-                print(msg)
-                Utilities.writeLogFile(msg)
-                return None
-
-        # Or add Full characterization files (RAW_UNCERTAINTIES)
-        elif ConfigFile.settings['bL1bCal'] == 3:
-
-            if ConfigFile.settings['FidRadDB'] == 0:
-                inpath = ConfigFile.settings['FullCalDir']
-                print("Full-Char - uncertainty computed from full characterization")
-                print('Full-Char dir:', inpath)
-
-            elif ConfigFile.settings['FidRadDB'] == 1:
-                sensorIDs = Utilities.get_sensor_dict(node)
-                acq_time = node.attributes["TIME-STAMP"].replace('_','')
-                inpath = os.path.join(PATH_TO_DATA, 'FidRadDB', "TriOS")
-                print('FidRadDB Cal./Char. dir:', inpath)
-
-                # FidRad DB connection and download of calibration files by api
-                cal_char_types = ['STRAY','RADCAL','POLAR','THERMAL','ANGULAR']
-                for sensorID in sensorIDs:
-                    for cal_char_type in cal_char_types:
-                        # Exceptions due to non-existing cal/char files now handled directly in FidradDB_api function
-                        # If cal/char file missing entails an error, this should be handled while performing the particular
-                        # correction, not here.
-                        FidradDB_api(sensorID + '_' + cal_char_type, acq_time, inpath)
-
-            node = ProcessL1b.read_unc_coefficient_frm(node, inpath, classbased_dir)
-            if node is None:
-                msg = 'Error loading FRM characterization files. Check directory.'
-                print(msg)
-                Utilities.writeLogFile(msg)
-                return None
-
         # Interpolate only the Ancillary group, and then fold in model data
         if not ProcessL1b_Interp.interp_Anc(node, outFilePath):
-            msg = 'Error interpolating ancillary data'
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint('Error interpolating ancillary data')
             return None
 
         # Need to fill in with model data here. This had previously been run on the GPS group, but now shifted to Ancillary group
         ancGroup = node.getGroup("ANCILLARY_METADATA")
         # Retrieve MERRA2 model ancillary data
         if ConfigFile.settings["bL1bGetAnc"] ==1:
-            msg = 'MERRA2 data for Wind and AOD may be used to replace blank values. Reading in model data...'
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint('MERRA2 data for Wind and AOD may be used to replace blank values. Reading in model data...')
             modRoot = GetAnc.getAnc(ancGroup)
         # Retrieve ECMWF model ancillary data
         elif ConfigFile.settings["bL1bGetAnc"] == 2:
-            msg = 'ECMWF data for Wind and AOD may be used to replace blank values. Reading in model data...'
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint('ECMWF data for Wind and AOD may be used to replace blank values. Reading in model data...')
             modRoot = GetAnc_ecmwf.getAnc_ecmwf(ancGroup)
         else:
             modRoot = None
@@ -404,81 +371,108 @@ class ProcessL1bTriOS:
         # are culled from datasets in groups in L1B
         ProcessL1b.includeModelDefaults(ancGroup, modRoot)
 
-        if ConfigFile.settings["bL1bCal"] == 1 or ConfigFile.settings["bL1bCal"] == 2:
+        # classbased_dir needed for FRM whilst pol is handled in class-based way
+        if ConfigFile.settings["SensorType"].lower() == "seabird" or  ConfigFile.settings["SensorType"].lower() == "trios":
+            classbased_dir = os.path.join(PATH_TO_DATA, 'Class_Based_Characterizations', #
+                                     ConfigFile.settings['SensorType']+"_initial")
+        elif ConfigFile.settings["SensorType"].lower() == "sorad":
+            classbased_dir = os.path.join(PATH_TO_DATA, 'Class_Based_Characterizations', # Hard-coded solution for sorad
+                                     'TriOS' +"_initial")
+
+        # The radCalDir is now the same for all cal/char regimes and regardless of whether files were downloaded from FidRadDB or not
+        radcal_dir = os.path.join(CODE_HOME, 'Data', 'FidRadDB',ConfigFile.settings['SensorType'])
+
+        # Add Class-based characterization files if needed (RAW_UNCERTAINTIES)
+        if ConfigFile.settings['fL1bCal'] == 1:
+            print("Factory TriOS RAMSES - no uncertainty computation")
+
+        # Add Class-based characterization files + RADCAL files
+        elif ConfigFile.settings['fL1bCal'] == 2:
+            print("Class-Based - uncertainty computed from class-based and RADCAL")
+            print('Class-Based:', classbased_dir)
+            print('RADCAL:', radcal_dir)
+            node = ProcessL1b.read_unc_coefficient_class(node, classbased_dir)
+            if node is None:
+                Utilities.writeLogFileAndPrint('Error running class based uncertainties.')
+                return None
+
+        # Or add Full characterization files (RAW_UNCERTAINTIES)
+        elif ConfigFile.settings['fL1bCal'] == 3:
+            print("Sensor-Specific - uncertainty and corrections computed from complete FidRadDB files")
+            node = ProcessL1b.read_unc_coefficient_frm(node, classbased_dir)
+            if node is None:
+                Utilities.writeLogFileAndPrint('Error loading FRM characterization files. Check directory.')
+                return None
+
+        if ConfigFile.settings["fL1bCal"] == 1 or ConfigFile.settings["fL1bCal"] == 2:
             # Calculate 6S model
             # Run elsewhere for FRM-regime
-            print('Running sixS')
-
             sensortype = "ES"
-            # Irradiance direct and diffuse ratio
-            res_sixS = ProcessL1b_FRMCal.get_direct_irradiance_ratio(node, sensortype)
+            if len(node.groups[0].datasets['ES'].data) > 2: # TJ - This condition has been added, as I noted at least 3 measurements are needed for 6S
+                print('Running sixS')
 
-            # Store sixS results in new group
-            grp = node.getGroup(sensortype)
-            solar_zenith = res_sixS['solar_zenith']
-            # ProcessL1b_FRMCal.get_direct_irradiance_ratio uses Es bands to run 6S and then works around bands that
-            #  don't have values from Tartu for full FRM. Here, use all the Es bands.
-            direct_ratio = res_sixS['direct_ratio']
-            diffuse_ratio = res_sixS['diffuse_ratio']
-            # sixS model irradiance is in W/m^2/um, scale by 10 to match HCP units
-            # model_irr = (res_sixS['direct_irr']+res_sixS['diffuse_irr']+res_sixS['env_irr'])[:,ind_raw_data]/10
-            model_irr = (res_sixS['direct_irr']+res_sixS['diffuse_irr']+res_sixS['env_irr'])/10
-            # model_irr = (res_sixS['direct_irr']+res_sixS['diffuse_irr']+res_sixS['env_irr'])[:,ind_nocal==False]/10
+                res_sixS = ProcessL1b_FRMCal.get_direct_irradiance_ratio(node, sensortype)
 
-            sixS_grp = node.addGroup("SIXS_MODEL")
-            for dsname in ["DATETAG", "TIMETAG2", "DATETIME"]:
-                # copy datetime dataset for interp process
-                ds = sixS_grp.addDataset(dsname)
-                ds.data = grp.getDataset(dsname).data
+                # Store sixS results in new group
+                grp = node.getGroup(sensortype)
+                solar_zenith = res_sixS['solar_zenith']
+                # ProcessL1b_FRMCal.get_direct_irradiance_ratio uses Es bands to run 6S and then works around bands that
+                #  don't have values from Tartu for full FRM. Here, use all the Es bands.
+                direct_ratio = res_sixS['direct_ratio']
+                diffuse_ratio = res_sixS['diffuse_ratio']
+                # sixS model irradiance is in W/m^2/um, scale by 10 to match HCP units
+                # model_irr = (res_sixS['direct_irr']+res_sixS['diffuse_irr']+res_sixS['env_irr'])[:,ind_raw_data]/10
+                model_irr = (res_sixS['direct_irr']+res_sixS['diffuse_irr']+res_sixS['env_irr'])/10
+                # model_irr = (res_sixS['direct_irr']+res_sixS['diffuse_irr']+res_sixS['env_irr'])[:,ind_nocal==False]/10
 
-            ds = sixS_grp.addDataset("sixS_irradiance")
+                sixS_grp = node.addGroup("SIXS_MODEL")
+                for dsname in ["DATETAG", "TIMETAG2", "DATETIME"]:
+                    # copy datetime dataset for interp process
+                    ds = sixS_grp.addDataset(dsname)
+                    ds.data = grp.getDataset(dsname).data
 
-            irr_grp = node.getGroup('ES_L1AQC')
-            str_wvl = np.asarray(pd.DataFrame(irr_grp.getDataset(sensortype).data).columns)
-            ds_dt = np.dtype({'names': str_wvl,'formats': [np.float64]*len(str_wvl)})
-            rec_arr = np.rec.fromarrays(np.array(model_irr).transpose(), dtype=ds_dt)
-            ds.data = rec_arr
+                ds = sixS_grp.addDataset("sixS_irradiance")
 
-            ds = sixS_grp.addDataset("direct_ratio")
-            ds_dt = np.dtype({'names': str_wvl,'formats': [np.float64]*len(str_wvl)})
-            rec_arr = np.rec.fromarrays(np.array(direct_ratio).transpose(), dtype=ds_dt)
-            ds.data = rec_arr
+                irr_grp = node.getGroup('ES_L1AQC')
+                str_wvl = np.asarray(pd.DataFrame(irr_grp.getDataset(sensortype).data).columns)
+                ds_dt = np.dtype({'names': str_wvl,'formats': [np.float64]*len(str_wvl)})
+                rec_arr = np.rec.fromarrays(np.array(model_irr).transpose(), dtype=ds_dt)
+                ds.data = rec_arr
 
-            ds = sixS_grp.addDataset("diffuse_ratio")
-            ds_dt = np.dtype({'names': str_wvl,'formats': [np.float64]*len(str_wvl)})
-            rec_arr = np.rec.fromarrays(np.array(diffuse_ratio).transpose(), dtype=ds_dt)
-            ds.data = rec_arr
+                ds = sixS_grp.addDataset("direct_ratio")
+                ds_dt = np.dtype({'names': str_wvl,'formats': [np.float64]*len(str_wvl)})
+                rec_arr = np.rec.fromarrays(np.array(direct_ratio).transpose(), dtype=ds_dt)
+                ds.data = rec_arr
 
-            ds = sixS_grp.addDataset("solar_zenith")
-            ds.columns["solar_zenith"] = solar_zenith
-            ds.columnsToDataset()
+                ds = sixS_grp.addDataset("diffuse_ratio")
+                ds_dt = np.dtype({'names': str_wvl,'formats': [np.float64]*len(str_wvl)})
+                rec_arr = np.rec.fromarrays(np.array(diffuse_ratio).transpose(), dtype=ds_dt)
+                ds.data = rec_arr
+
+                ds = sixS_grp.addDataset("solar_zenith")
+                ds.columns["solar_zenith"] = solar_zenith
+                ds.columnsToDataset()
+
 
         ## Dark Correction & Absolute Calibration
         stats = {}
         for instrument in ConfigFile.settings['CalibrationFiles'].keys():
             # get instrument serial number and sensor type
+
             instrument_number = os.path.splitext(instrument)[0]
             sensortype = ConfigFile.settings['CalibrationFiles'][instrument]['frameType']
             enabled = ConfigFile.settings['CalibrationFiles'][instrument]['enabled']
             if enabled:
-                msg = f'Dark Correction: {instrument_number} - {sensortype}'
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(f'Dark Correction: {instrument_number} - {sensortype}')
 
-                if ConfigFile.settings["bL1bCal"] <= 2:
+                if ConfigFile.settings["fL1bCal"] <= 2:
                     if not ProcessL1bTriOS.processDarkCorrection(node, sensortype, stats):
-                        msg = f'Error in ProcessL1bTriOS.processDarkCorrection: {instrument_number} - {sensortype}'
-                        print(msg)
-                        Utilities.writeLogFile(msg)
+                        Utilities.writeLogFileAndPrint(f'Error in ProcessL1bTriOS.processDarkCorrection: {instrument_number} - {sensortype}')
                         return None
-                elif ConfigFile.settings['bL1bCal'] == 3:
+                elif ConfigFile.settings['fL1bCal'] == 3:
                     if not ProcessL1bTriOS.processDarkCorrection_FRM(node, sensortype, stats):
-                        msg = f'Error in ProcessL1bTriOS.processDarkCorrection_FRM: {instrument_number} - {sensortype}'
-                        print(msg)
-                        Utilities.writeLogFile(msg)
+                        Utilities.writeLogFileAndPrint(f'Error in ProcessL1bTriOS.processDarkCorrection_FRM: {instrument_number} - {sensortype}')
                         return None
-
-
 
         ## Interpolation
         # Match instruments to a common timestamp (slowest shutter, should be Lt) and

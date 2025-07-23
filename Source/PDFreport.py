@@ -62,9 +62,9 @@ class PDF(FPDF):
                         metaData += f'/{key}={value}\n'
 
         if root.attributes['Fail'] == 0: # otherwise this is a report of failed process, so root is None.
-                gpDict = {}
-                for gp in root.groups:
-                    gpDict[gp.id] = gp
+            gpDict = {}
+            for gp in root.groups:
+                gpDict[gp.id] = gp
 
         if level == "L1AQC":
             intro = 'Low level QC (pitch, roll, yaw, and azimuth) and deglitching.\n'
@@ -208,13 +208,19 @@ class PDF(FPDF):
                 metaData += f'Cal. Type: {root.attributes["CAL_TYPE"]}\n'
                 metaData += f'Wavelength Interp Int: {root.attributes["WAVE_INTERP"]}\n'
             else:
-                if  ConfigFile.settings["bL1bCal"] == 1:
+                if  ConfigFile.settings["fL1bCal"] == 1:
                     metaData += 'Cal. Type: Default/Factory'
-                elif ConfigFile.settings["bL1bCal"] == 2:
+                elif ConfigFile.settings["fL1bCal"] == 2:
                     metaData += 'Cal. Type: Class-based'
-                elif ConfigFile.settings["bL1bCal"] == 3:
+                elif ConfigFile.settings["fL1bCal"] == 3:
                     metaData += 'Cal. Type: Full-FRM'
-                metaData += f'Wavelength Interp Int: {ConfigFile.settings["fL1bInterpInterval"]}\n'
+                # metaData += f'Wavelength Interp Int: {ConfigFile.settings["fL1bInterpInterval"]}\n'
+                if  ConfigFile.settings["fL1bThermal"] == 1:
+                    metaData += 'Internal working temp source: Internal thermistor\n'
+                if  ConfigFile.settings["fL1bThermal"] == 2:
+                    metaData += 'Internal working temp source: Air temperature + margin\n'
+                if  ConfigFile.settings["fL1bThermal"] == 3:
+                    metaData += 'Internal working temp source: Caps-on dark file unless < 30C.\n'                    
 
         if level == "L1BQC":
             intro = 'Apply more quality control filters.\n'
@@ -409,12 +415,13 @@ class PDF(FPDF):
                 self.multi_cell(0, 5, "None found.\n")
 
         if level == "L1B":
-            inPath = os.path.join(inPlotPath, f'{level}')
+            inPath = os.path.join(inPlotPath, f'{level}_Interp')
             self.cell(0, 6, 'Example Temporal Interpolations', 0, 1, 'L', 1)
             self.multi_cell(0, 5, 'Randomized. Complete plots of hyperspectral \n'\
                 'interpolations can be found in [output_directory]/Plots/L1B_Interp.\n')
 
             fileList = glob.glob(os.path.join(inPath, f'{filebasename}_*.png'))
+            # NOTE: Should screen out the sixS plots here at some point
 
             print('Adding interpolation plots...')
             if len(fileList) > 0:

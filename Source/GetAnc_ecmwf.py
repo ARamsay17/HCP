@@ -50,9 +50,10 @@ class GetAnc_ecmwf:
 
         # Obtain rounded date and time considering the temporal resolution of the dataset)
         epoch_time = timeStamp.timestamp()
+  
         # epoch_time = datetime.datetime.strptime(timeStamp, '%Y-%m-%dT%H:%M:%S').timestamp()
         timeResSecs = 3600 * timeResHours
-        rounded_epoch_time = round(epoch_time / timeResSecs) * timeResSecs
+        rounded_epoch_time = np.floor(epoch_time / timeResSecs) * timeResSecs # changed from round to np.floor (I think it was is downloading data with a 1 hr offset?)
         rounded_timestamp = datetime.datetime.fromtimestamp(rounded_epoch_time)
         dateStrRounded, timeStrRounded = rounded_timestamp.strftime('%Y-%m-%dT%H:%M:%S').split('T')
 
@@ -92,6 +93,7 @@ class GetAnc_ecmwf:
                 print('CAMS dataset not available before 2015, skipping')
             else:
                 try:
+                 
                     c = cdsapi.Client(timeout=5, url=url, key=key)
                     c.retrieve(
                         'cams-global-atmospheric-composition-forecasts',
@@ -144,7 +146,8 @@ class GetAnc_ecmwf:
         CAMS_variables = {
         '10m_u_component_of_wind' :'u10',
         '10m_v_component_of_wind' :'v10',
-        'total_aerosol_optical_depth_550nm' :'aod550'
+        'total_aerosol_optical_depth_550nm' :'aod550',
+        '2m_temperature': 't2m'
         }
 
         CAMSnc = {}
@@ -190,6 +193,7 @@ class GetAnc_ecmwf:
         lon = inputGroup.getDataset('LONGITUDE').data["NONE"]
 
         modWind = []
+        modAirT = []
         modAOD = []
 
         # Loop through the input group and extract model data for each element
@@ -205,6 +209,9 @@ class GetAnc_ecmwf:
             modWind.append(np.sqrt(uWind*uWind + vWind*vWind)) # direction not needed
             #ancAOD = aerGroup.getDataset("TOTEXTTAU")
             modAOD.append(ancillary['total_aerosol_optical_depth_550nm']['value'])
+            modAirT.append(ancillary['2m_temperature']['value'] - 273.15) # [C]
+
+
 
         modData = HDFRoot()
         modGroup = modData.addGroup('ECMWF')
@@ -212,15 +219,17 @@ class GetAnc_ecmwf:
         modGroup.addDataset('Timetag2')
         modGroup.addDataset('AOD')
         modGroup.addDataset('Wind')
+        modGroup.addDataset('AirTemp')
         '''NOTE: This is an unconventional use of Dataset, i.e., overides object with .data and .column.
             Keeping for continuity of application'''
         modGroup.datasets['Datetag'] = latDate
         modGroup.datasets['Timetag2'] = latTime
         modGroup.datasets['AOD'] = modAOD
         modGroup.datasets['Wind'] = modWind
+        modGroup.datasets['AirTemp'] = modAirT
         modGroup.attributes['Wind units'] = 'm s-1'
+        modGroup.attributes['Air Temp. units'] = 'C'
         modGroup.attributes['AOD wavelength'] = '550 nm'
         print('GetAnc_ecmwf: Model data retrieved')
 
         return modData
-

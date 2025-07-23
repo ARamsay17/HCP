@@ -487,18 +487,26 @@ class SeaBASSHeaderWindow(QtWidgets.QDialog):
                 print("Specified ancillary file not found: " + fp)
             else:
                 metaHeaders = AncillaryReader.readAncillaryHeader(fp)
-                for key in metaHeaders.keys():
+                for key,value in metaHeaders.items():
                     # The ancillary file may cover a whole cruise, so only use the general metadata, not the specific
                     omitList = ['data_file_name','calibration_files','data_status','station','documents','start_date','end_date',\
                                 'north_latitude','south_latitude','east_longitude','west_longitude','start_time','end_time',\
                                     'measurement_depth','water_depth','fields','units']
-                    if key in SeaBASSHeader.settings and SeaBASSHeader.settings[key] == '' and key not in omitList:
-                        SeaBASSHeader.settings[key] = metaHeaders[key]
+                    if key in SeaBASSHeader.settings and \
+                        (SeaBASSHeader.settings[key] == '' or SeaBASSHeader.settings[key] == 'temp') \
+                            and key not in omitList:
+                        SeaBASSHeader.settings[key] = value
 
-        # if ConfigFile.settings["bL1aCleanSZA"]:
-        #     szaFilt = "On"
-        # else:
-        #     szaFilt = "Off"
+        SeaBASSHeader.settings['instrument_manufacturer'] = ConfigFile.settings['SensorType']
+        if ConfigFile.settings['SensorType'].lower() == 'trios':
+            SeaBASSHeader.settings['instrument_model'] = 'RAMSES'
+        if ConfigFile.settings['SensorType'].lower() == 'seabird':
+            SeaBASSHeader.settings['instrument_model'] = 'HyperOCR'
+        if ConfigFile.settings['SensorType'].lower() == 'dalec':
+            SeaBASSHeader.settings['instrument_model'] = 'DALEC'
+
+        # NOTE: Need to capture the calibration date for the SeaBASS file header
+        
         if ConfigFile.settings["bL1aqcCleanPitchRoll"]:
             pitchRollFilt = "On"
         else:
@@ -516,15 +524,26 @@ class SeaBASSHeaderWindow(QtWidgets.QDialog):
         else:
             deglitchFilt = "Off"
 
-        if ConfigFile.settings['bL1bCal'] == 1:
+        if ConfigFile.settings['fL1bCal'] == 1:
             if ConfigFile.settings['SensorType'].lower() == 'seabird':
-                FRMPath = 'Non-FRM_Class-based'
+                FRMRegime = 'Non-FRM_Class-based'
             else:
-                FRMPath = 'Factory_Calibration'
-        elif ConfigFile.settings['bL1bCal'] == 2:
-            FRMPath = 'FRM_Class-based'
-        elif ConfigFile.settings['bL1bCal'] == 3:
-            FRMPath = 'FRM-Full-Characterization'
+                FRMRegime = 'Factory_Calibration'
+        elif ConfigFile.settings['fL1bCal'] == 2:
+            FRMRegime = 'FRM_Class-based'
+        elif ConfigFile.settings['fL1bCal'] == 3:
+            FRMRegime = 'FRM-Full-Characterization'
+        else:
+            FRMRegime = None
+
+        if ConfigFile.settings['fL1bThermal'] == 1:
+            ThermalSource = 'Internal_Thermistor'
+        elif ConfigFile.settings['fL1bThermal'] == 2:
+            ThermalSource = 'Air_Termperature'
+        elif ConfigFile.settings['fL1bThermal'] == 3:
+            ThermalSource = 'Caps_On_Dark_File'
+        else:
+            ThermalSource = None
 
         if ConfigFile.settings["bL1bqcEnableSpecQualityCheck"]:
             specFilt = "On"
@@ -559,11 +578,14 @@ class SeaBASSHeaderWindow(QtWidgets.QDialog):
             elif ConfigFile.settings["bL2BRDF_IOP"]:
                 # Lee 2011
                 SeaBASSHeader.settings["BRDF_correction"] = 'L11'
+            elif ConfigFile.settings["bL2BRDF_O23"]:
+                # Pitarch 2025
+                SeaBASSHeader.settings["BRDF_correction"] = 'O23'
             # elif ConfigFile.settings["bL2BRDF_OXX"]:
             #     # Lee 2011 adapted by D'Allimonte et al.
             #     SeaBASSHeader.settings["BRDF_correction"] = 'Rrs:OXX,Lwnex:OXX'
         else:
-            SeaBASSHeader.settings["BRDF_correction"] = 'NoBRDF'
+            SeaBASSHeader.settings["BRDF_correction"] = 'noBRDF'
 
         if ConfigFile.settings["bL2NegativeSpec"]:
             NegativeFilt = "On"
@@ -600,7 +622,13 @@ class SeaBASSHeaderWindow(QtWidgets.QDialog):
             f'! LT Light Window = {ConfigFile.settings["fL1aqcLTWindowLight"]}\n'+\
             f'! LT Dark Sigma = {ConfigFile.settings["fL1aqcLTSigmaDark"]}\n'+\
             f'! LT Light Sigma = {ConfigFile.settings["fL1aqcLTSigmaLight"]}\n'+\
-            f'! FRM Pathway = {FRMPath}\n'+\
+            f'! FRM Pathway = {FRMRegime}\n'+\
+            f'! Thermal Source = {ThermalSource}\n'+\
+            f'! Default Salt = {ConfigFile.settings["fL1bDefaultSalt"]}\n'+\
+            f'! Default SST = {ConfigFile.settings["fL1bDefaultSST"]}\n'+\
+            f'! Default AOD = {ConfigFile.settings["fL1bDefaultAOD"]}\n'+\
+            f'! Default Wind = {ConfigFile.settings["fL1bDefaultWindSpeed"]}\n'+\
+            f'! Default AirTemp = {ConfigFile.settings["fL1bDefaultAirT"]}\n'+\
             f'! Wavelength Interp Int = {ConfigFile.settings["fL1bInterpInterval"]}\n'+\
             f'! Max Wind = {ConfigFile.settings["fL1bqcMaxWind"]}\n'+\
             f'! Min SZA = {ConfigFile.settings["fL1bqcSZAMin"]}\n'+\

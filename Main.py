@@ -27,7 +27,7 @@ from Source.SeaBASSHeader import SeaBASSHeader
 from Source.SeaBASSHeaderWindow import SeaBASSHeaderWindow
 from Source.Utilities import Utilities
 
-VERSION = "1.2.14"
+VERSION = "1.2.14c"
 
 
 class Window(QtWidgets.QWidget):
@@ -61,8 +61,12 @@ class Window(QtWidgets.QWidget):
             Utilities.downloadZhangDB(fpfZhang)
 
         # Confirm that core data files are in place. Download if necessary.
-        # fpfZhangLUT = os.path.join(CODE_HOME, "Data", "Zhang_rho_LUT.nc")
-        fpfZhangLUT = os.path.join(CODE_HOME, "Data", "Z17_LUT_v2.nc")
+        fpfZhangLUT = os.path.join(CODE_HOME, "Data", "Z17_LUT_40.nc")
+        if not os.path.exists(fpfZhangLUT):
+            Utilities.downloadZhangLUT(fpfZhangLUT)
+
+        # Confirm that core data files are in place. Download if necessary.
+        fpfZhangLUT = os.path.join(CODE_HOME, "Data", "Z17_LUT_30.nc")
         if not os.path.exists(fpfZhangLUT):
             Utilities.downloadZhangLUT(fpfZhangLUT)
 
@@ -75,6 +79,16 @@ class Window(QtWidgets.QWidget):
             MainConfig.fileName, VERSION
         )  # VERSION in case it has to make new
         MainConfig.settings["version"] = VERSION  # VERSION to update if necessary
+
+        # Test that current In/Out folders and ancillary file are valid
+        if not os.path.isdir(MainConfig.settings["inDir"]):
+            MainConfig.settings["inDir"] = CODE_HOME
+        if not os.path.isdir(MainConfig.settings["outDir"]):
+            MainConfig.settings["outDir"] = CODE_HOME
+        if not os.path.isdir(MainConfig.settings["ancFileDir"]):
+            MainConfig.settings["ancFileDir"] = CODE_HOME
+        if not os.path.isfile(MainConfig.settings["ancFile"]):
+            MainConfig.settings["ancFile"] = CODE_HOME
 
         # Banner
         banner = QtWidgets.QLabel(self)
@@ -262,10 +276,13 @@ class Window(QtWidgets.QWidget):
         # MainConfig.saveConfig(MainConfig.fileName)
 
     def comboBox1Changed(self, value):
+        # Save prior Config
+        if value != MainConfig.settings['cfgFile']:
+            ConfigFile.saveConfig(MainConfig.settings['cfgFile'])
         MainConfig.settings["cfgFile"] = value
         index = self.configComboBox.findText(MainConfig.settings["cfgFile"])
         self.configComboBox.setCurrentIndex(index)
-        print("MainConfig: Configuration file changed to: ", value)
+        # print("MainConfig: Configuration file changed to: ", value)
         # MainConfig.saveConfig(MainConfig.fileName)
         configFileName = self.configComboBox.currentText()
         configPath = os.path.join(CODE_HOME, "Config", configFileName)
@@ -281,7 +298,7 @@ class Window(QtWidgets.QWidget):
                 self.ancFileDir = ConfigFile.settings['ancFileDir']
                 # self.anc = ConfigFile.settings['ancFile']
                 self.inDirButton.setText(MainConfig.settings["inDir"])
-                self.outDirButton.setText(MainConfig.settings["outDir"])                
+                self.outDirButton.setText(MainConfig.settings["outDir"])
                 self.ancFileLineEdit.setText(
                     os.path.join(MainConfig.settings['ancFileDir'],MainConfig.settings["ancFile"]))
         # ConfigFile.saveConfig(ConfigFile.filename)
@@ -503,9 +520,8 @@ class Window(QtWidgets.QWidget):
         if ConfigFile.settings["SensorType"].lower() == "seabird":
             calibrationMap = Controller.processCalibrationConfig(
                 configFileName, calFiles
-            )
-        # else:
-        elif ConfigFile.settings["SensorType"].lower() == "trios":
+            )   
+        elif ConfigFile.settings["SensorType"].lower() == "trios" or ConfigFile.settings["SensorType"].lower() == "sorad":
             calibrationMap = Controller.processCalibrationConfigTrios(calFiles)
         elif ConfigFile.settings["SensorType"].lower() == "dalec":
             calibrationMap = Controller.processCalibrationConfig(
@@ -591,10 +607,10 @@ class Window(QtWidgets.QWidget):
         print("Output Directory:", self.outputDirectory)
         if not self.outputDirectory:
             return
-
+       
         calFiles = ConfigFile.settings["CalibrationFiles"]
         # To check instrument type
-        if ConfigFile.settings["SensorType"].lower() == "trios":
+        if ConfigFile.settings["SensorType"].lower() == "trios" or ConfigFile.settings["SensorType"].lower() == "sorad":
             calibrationMap = Controller.processCalibrationConfigTrios(calFiles)
         elif ConfigFile.settings["SensorType"].lower() == "seabird":
             print("Process Calibration Files")
@@ -661,7 +677,12 @@ class Command:
 
         # Confirm that core data files are in place. Download if necessary.
         # fpfZhangLUT = os.path.join(CODE_HOME, "Data", "Zhang_rho_LUT.nc")
-        fpfZhangLUT = os.path.join(CODE_HOME, "Data", "Z17_LUT_v2.nc")
+        fpfZhangLUT = os.path.join(CODE_HOME, "Data", "Z17_LUT_40.nc")
+        if not os.path.exists(fpfZhangLUT):
+            Utilities.downloadZhangLUT(fpfZhangLUT, force=True)
+
+        # Confirm that core data files are in place. Download if necessary.
+        fpfZhangLUT = os.path.join(CODE_HOME, "Data", "Z17_LUT_30.nc")
         if not os.path.exists(fpfZhangLUT):
             Utilities.downloadZhangLUT(fpfZhangLUT, force=True)
 
@@ -687,17 +708,18 @@ class Command:
         # inputFile = [inputFile]
 
         ConfigFile.loadConfig(self.configFilename)
-        
+
         # No GUI used: error message are display in prompt and not in graphical window
         MainConfig.settings["popQuery"] = 1 # 1 suppresses popup
         MainConfig.saveConfig(MainConfig.fileName)
         print("MainConfig - Config updated with cmd line arguments")
 
-        
-
         calFiles = ConfigFile.settings["CalibrationFiles"]
-
-        if ConfigFile.settings["SensorType"].lower() == "trios":
+        
+        ConfigFile.settings["SensorType"].lower() 
+ 
+ 
+        if ConfigFile.settings["SensorType"].lower() == "trios" or ConfigFile.settings["SensorType"].lower() == "sorad":
             calibrationMap = Controller.processCalibrationConfigTrios(calFiles)
         elif ConfigFile.settings["SensorType"].lower() == "seabird":
             print("Process Calibration Files")
@@ -710,11 +732,11 @@ class Command:
         else:
             print(f'CalibrationConfig is not yet ready for {ConfigFile.settings["SensorType"]}')
             sys.exit()
-
+    
         # Update the SeaBASS .hdr file in case changes were made to the configuration without using the GUI
-        SeaBASSHeader.loadSeaBASSHeader(ConfigFile.settings['seaBASSHeaderFileName'])
-        SeaBASSHeaderWindow.configUpdateButtonPressed(self, 'config1')
-        SeaBASSHeader.saveSeaBASSHeader(ConfigFile.settings['seaBASSHeaderFileName'])
+        SeaBASSHeader.loadSeaBASSHeader(ConfigFile.settings["seaBASSHeaderFileName"])
+        SeaBASSHeaderWindow.configUpdateButtonPressed(self, "config1")
+        SeaBASSHeader.saveSeaBASSHeader(ConfigFile.settings["seaBASSHeaderFileName"])
 
         if processMultiLevel:
             if ConfigFile.settings["SensorType"].lower() == "trios" and to_level == "L1A":

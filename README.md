@@ -16,7 +16,7 @@ retrieval. Data outputs are formatted to text files for submission to the [SeaBA
 Currently, HyperCP supports <a href='https://www.seabird.com/'>Sea-Bird Scientific</a> HyperSAS packages with and
 without SolarTracker or pySAS robotic platforms as well as [TriOS](https://www.trios.de/en/radiometers.html) used in manual configuration and IMO [DALEC](https://insitumarineoptics.com/dalec/). Support of Monocle/PML [So-Rad](https://monocle-h2020.eu/Sensors_and_platforms/Solar_tracking_radiometry_platform_en.html) is pending. If you are interested in integrating support for your platform, contact us at the email addresses below or in the Discussions tab of the GitHub repository.
 
-## Version 1.2.14
+## Version 1.2.14c
 
 ```
 The MIT license
@@ -168,11 +168,6 @@ However you launch the GUI, *watch for important feedback at the command line te
 Batching multiple files across single or multiple processing levels is also possible
 as described below.
 
-<!-- To see an example of a complete workflow of the processing from raw data to the final HDF and SeaBASS/OCDB L2 outputs,
-both for TriOS and HyperSAS,
-please see [here](https://gitlab.eumetsat.int/OC/External/frm4soc-cp/-/blob/master/Command_line_example.cmd) <- firewalled -->
-
-
 The Main window appears once Main.py is launched, as described [above](README.md/#3-launch-hypercp-for-the-first-time):
 
  ```
@@ -226,6 +221,8 @@ are also auto-created during processing as described below. The parent directory
 sub-directories for processing levels (e.g. "/L1A", "/L1B", etc.) If no input or output data directories are selected,
 '/Data' and '/Plots' under the HyperCP directory structure will be used by default as the parent directories.
 
+NOTE: For users with their operating system set to non-English language, please avoid OS-specific folders such as "Documents" in your user directory. Python and Windows (at least) disagree on how to spell these leading to data output conflicts.
+
 #### 3. Ancillary Input Files
 
 Ancillary data files for environmental conditions and relevant geometries used in processing must be text files in
@@ -239,6 +236,7 @@ Optional data fields in the SeaBASS format include
 - ship speed,
 - relative sensor azimuth,
 - aerosol optical depth,
+- air temperature,
 - cloud cover,
 - salinity,
 - water temperature,

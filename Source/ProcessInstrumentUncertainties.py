@@ -91,7 +91,7 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
         output = {}  # used tp store standard deviations and averages as a function return for generateSensorStats
         types = ['ES', 'LI', 'LT']
         for sensortype in types:
-           if InstrumentType.lower() == "trios":
+           if InstrumentType.lower() == "trios" or InstrumentType.lower() == "sorad":
                 # filter nans
                 self.apply_NaN_Mask(rawSlice[sensortype]['data'])
                 # RawData is the full group - this is used to get a few attributes only
@@ -175,7 +175,7 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
         for s in ["ES", "LI", "LT"]:  # s for sensor type
             cal_start = None
             cal_stop = None
-            if ConfigFile.settings["bL1bCal"] == 1 and ConfigFile.settings['SensorType'].lower() == "seabird":
+            if ConfigFile.settings["fL1bCal"] == 1 and ConfigFile.settings['SensorType'].lower() == "seabird":
                 radcal = self.extract_unc_from_grp(uncGrp, f"{s}_RADCAL_UNC")
                 ind_rad_wvl = (np.array(radcal.columns['wvl']) > 0)  # all radcal wvls should be available from sirrex
                 # read cal start and cal stop for shaping stray-light class based uncertainties
@@ -185,17 +185,17 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
                 self.extract_factory_cal(node, radcal, s, cCal, cCoef)  # populates dicts with calibration
 
                         
-            #elif ConfigFile.settings["bL1bCal"] == 1 and ConfigFile.settings['SensorType'].lower() == "dalec":
+            #elif ConfigFile.settings["fL1bCal"] == 1 and ConfigFile.settings['SensorType'].lower() == "dalec":
             #    radcal = self.extract_unc_from_grp(uncGrp, f"{s}_RADCAL_UNC")
             #    ind_rad_wvl = (np.array(radcal.columns['wvl']) > 0)  # all radcal wvls should be available from sirrex
             #    self.extract_factory_cal(node, radcal, s, cCal, cCoef)  # populates dicts with calibration
             
-            elif ConfigFile.settings["bL1bCal"] == 2:  # class-Based
+            elif ConfigFile.settings["fL1bCal"] == 2:  # class-Based
                 radcal = self.extract_unc_from_grp(uncGrp, f"{s}_RADCAL_CAL")
                 ind_rad_wvl = (np.array(radcal.columns['1']) > 0)  # where radcal wvls are available
 
                 # ensure correct units are used for uncertainty calculation
-                if ConfigFile.settings['SensorType'].lower() == "trios":
+                if ConfigFile.settings['SensorType'].lower() == "trios" or ConfigFile.settings['SensorType'].lower() == "sorad":
                     # Convert TriOS mW/m2/nm to uW/cm^2/nm
                     cCoef[s] = np.asarray(list(radcal.columns['2']))[ind_rad_wvl] / 10
                 elif ConfigFile.settings['SensorType'].lower() == "seabird":

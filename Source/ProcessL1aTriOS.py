@@ -31,42 +31,53 @@ class ProcessL1aTriOS:
 
                 ## Test filename for station/cast
                 # XXXXS for light, XXXXD for caps-on dark
-                def parse_filename(data):
-                    dates = []
-                    for pattern in [
+                def parse_filename(fileStr):
+                    ''' Test filename for datetime or station/cast light/dark '''
+                    matches = []
+                    matchTypes = []
+                    # Possibilities:
+                    #   YYYYMMDD_hhmmss, YYYY_MM_DD_hh_mm_ss, YYYYMMDD_hh_mm_ss,YYYY_MM_DD_hhmmss
+                    #   SSCCS, SSCCD
+                    for i, pattern in enumerate([
                         r'\d{8}.\d{6}', 
                         r'\d{4}.\d{2}.\d{2}.\d{2}.\d{2}.\d{2}',
                         r'\d{8}.\d{2}.\d{2}.\d{2}',
                         r'\d{4}.\d{2}.\d{2}.\d{6}',
                         r'\d{4}S', 
-                        r'\d{4}D',
-                    ]:
-                        match = re.search(pattern, data)
+                        r'\d{4}D']):
+
+                        match = re.search(pattern, fileStr)
                         if match is not None:
-                            dates.append(match.group(0))
+                            matches.append(match.group(0))
+                            if i < 3:
+                                matchTypes.append('datetime')
+                            else:
+                                matchTypes.append('stationcast')
 
-                    if len(dates) == 0:
+                    if len(matches) == 0:
                         raise IndexError
-
-                    return dates[0]
+                    if 'stationcast' in matchTypes:
+                        fileDesignation = matches[matchTypes.index('stationcast')]
+                        matchType = 'stationcast'
+                    else:
+                        fileDesignation = matches[0] # Any of the datetimes
+                        matchType = 'datetime'
+                    return fileDesignation, matchType
 
                 try:
-                    a_name = parse_filename(file.split('/')[-1])
+                    a_name, a_type = parse_filename(file.split('/')[-1])
                 except IndexError:
+                    print(f'Full path file: {file}')
                     print("  ERROR: no identifier recognized in TRIOS L0 file name" )
                     print("  L0 filename should have a cast to identify triplet instrument")
                     print("  ending in 4 digits before S.mlb (light) or D.mlb for caps-on dark. ")
                     return None,None
 
-                # match1 = re.search(r'\d{8}_\d{6}', file.split('/')[-1])
-                # match2 = re.search(r'\d{4}S', file.split('/')[-1])
-                # match3 = re.search(r'\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}', file.split('/')[-1])
                 acq_name.append(a_name)
 
-            # acq_time = list(dict.fromkeys(acq_time)) # Returns unique timestamps
             acq_name = list(dict.fromkeys(acq_name)) # Returns unique names
-            
-            outFFP = []            
+
+            outFFP = []
             for a_name in acq_name:
                 print("")
                 print("Generate the telemetric file...")
@@ -100,12 +111,12 @@ class ProcessL1aTriOS:
                     root.attributes["FRAME_TYPE"] = 'light'
                 for file in ffp:
                     if "SAM_" in file:
-                        name = file[file.index('SAM_')+4:file.index('SAM_')+8]
+                        serialNumber = file[file.index('SAM_')+4:file.index('SAM_')+8]
                     else:
                         print("ERROR : naming convention os not respected")
-                        name = None
+                        serialNumber = None
 
-                    start,stop = ProcessL1aTriOS.formatting_instrument(name,cal_path,file,root,configPath)
+                    start,stop = ProcessL1aTriOS.formatting_instrument(serialNumber,cal_path,file,root,configPath)
 
                     if start is None:
                         return None, None
@@ -124,7 +135,8 @@ class ProcessL1aTriOS:
                     new_name = a_name #acq_name[0]
                     # new_name = file.split('/')[-1].split('.mlb')[0].split(f'SAM_{name}_RAW_SPECTRUM_')[1]
                     # NOTE: For caps-on darks, we require a 4-digit station number plus 'S' or 'D' for light or dark, respectively
-                    if re.search(r'\d{4}[DS]', file.split('/')[-1]) is not None:
+                    # If this is a stationcast type filename, append the start time from the data:
+                    if (re.search(r'\d{4}[DS]', file.split('/')[-1]) is not None) or (a_type == 'stationcast'):
                         new_name = str(start)+'_'+new_name
                 except IndexError as err:
                     print(err)
@@ -153,6 +165,7 @@ class ProcessL1aTriOS:
                             if not (all(lat.data) == 0 and all(lon.data) == 0):
                                 # Initialize a new group for MSDA GPS data
                                 gpsGroup = root.addGroup("GPS_MSDA")
+                                gpsGroup.attributes['CalFileName'] = 'GPS_MSDA'
                                 gpsGroup.addDataset("LATITUDE")
                                 gpsGroup.datasets["LATITUDE"].data = np.array(lat.data, dtype=[('NONE', '<f8')])
                                 gpsGroup.addDataset("LONGITUDE")
@@ -164,22 +177,34 @@ class ProcessL1aTriOS:
 
                 # For Caps-On Dark measurements
                 if cod:
+                    minSpectra = 5 # minimum number of spectra to estimate T from DN
                     for gpDark in root.groups:
                         if gpDark.id.startswith('SAM'):
-                            # NOTE: Placeholder to calculate T and dT from DN.
+                            sensorIDS = ['ES','LI','LT']
+                            for ds in gpDark.datasets:
+                                if gpDark.datasets[ds].id in sensorIDS:                 
+                                    DN = gpDark.datasets[ds].data[:].tolist()
+                                    if len(DN) < minSpectra:
+                                        Utilities.writeLogFileAndPrint("Too few spectra for caps-on dark algorithm. Abort.")
+                                        return None, None
+
+                            # Zibordi & Talone, in prep. (2025)
                             # T = -Tc + S * ln(DN-DNc)
                             # RAMSES class coefficients
-                            # Tc = -16.4
-                            # S = 6.147
-                            # DNc = 1438
+                            Tc = -16.4
+                            S = 6.147
+                            DNc = 1438
                             print(f'Running caps-on dark algorithm to estimate internal temp:{gpDark.id}')
-                            # Add dataset INTERNALTEMP for T and sigmaT columns. SPECTEMP reserved for internal thermistor temp (G2 and others)
-                            T = gpDark.addDataset('INTERNALTEMP')
-                            # Dummy values
-                            T.appendColumn('T',float(31))                      # Placeholder for average internal T from DN
-                            T.appendColumn('sigmaT',float(3))                      # Placeholder for standard devation of DN
-                            # NOTE: Not clear how long of a record to average, or how to (whether to) average the DNs across all bands.
-                            T.columnsToDataset()
+
+                            T = [Tc + S * np.log(dn-DNc) for dn in np.array(DN[:])]
+                            meanT = np.mean(T)
+                            # meanT = 31 NOTE: use to force COD threshold for testing
+                            stdT = np.std(T)
+                            # Add dataset CAPSONTEMP for T and sigmaT columns. SPECTEMP reserved for internal thermistor temp (G2 and others)
+                            dsT = gpDark.addDataset('CAPSONTEMP')
+                            dsT.appendColumn('T',meanT)
+                            dsT.appendColumn('sigmaT',stdT)
+                            dsT.columnsToDataset()
                 elif re.search(r'\d{4}[S]', a_name):
                     darkFile = None
                     if os.path.isdir(outFilePathDark):
@@ -192,8 +217,8 @@ class ProcessL1aTriOS:
                             if gpDark.id.startswith('SAM'):
                                 for gp in root.groups:
                                     if gp.id == gpDark.id:
-                                        T = gp.addDataset('INTERNALTEMP')
-                                        T.copy(gpDark.datasets['INTERNALTEMP'])
+                                        T = gp.addDataset('CAPSONTEMP')
+                                        T.copy(gpDark.datasets['CAPSONTEMP'])
                                         T.datasetToColumns()
 
                 try:
@@ -203,8 +228,7 @@ class ProcessL1aTriOS:
                 except Exception:
                     msg = 'Unable to write L1A file. It may be open in another program.'
                     Utilities.errorWindow("File Error", msg)
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return None, None
 
                 Utilities.checkOutputFiles(outFFP[-1])
@@ -472,6 +496,7 @@ class ProcessL1aTriOS:
                 rec_arr = np.rec.fromarrays(my_arr[1:], dtype=ds_dt)
             else:
                 raise
+
         gp.addDataset(sensor)
         gp.datasets[sensor].data=np.array(rec_arr, dtype=ds_dt)
 
@@ -528,7 +553,10 @@ class ProcessL1aTriOS:
                 # BACK_ and CAL_ are nLambda x 2 and nLambda x 1, respectively, not timestamped to DATETAG, TIMETAG2
                 if (not ds.startswith('BACK_')) and (not ds.startswith('CAL_')):
                     gp.datasets[ds].datasetToColumns()
-                    gp.datasets[ds].data = np.array([x for _, x in sorted(zip(dateTime,gp.datasets[ds].data))])
+                    try:
+                        gp.datasets[ds].data = np.array([x for _, x in sorted(zip(dateTime,gp.datasets[ds].data))])
+                    except:
+                        print('fail')
 
         return node
 

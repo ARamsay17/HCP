@@ -15,7 +15,9 @@
 # HyperCP
 # .gitignore
 /Bundled/
-Data/FidRadDB/
+# Data/FidRadDB/
+Data/FidRadDB/SeaBird/*
+Data/FidRadDB/TriOS/*
 Data/Zhang_rho_db.mat
 Data/Zhang_rho_db_expanded.mat
 Data/Zhang_rho_LUT.nc

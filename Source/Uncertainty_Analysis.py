@@ -395,10 +395,11 @@ class Propagate:
             sza = 60
 
         from Source.RhoCorrections import InterpolationError
-        try:
-            zhang = RhoCorrections.read_Z17_LUT(windSpeedMean, AOD, sza, wTemp - 273.15, sal, relAz, sva, waveBands)
-        except InterpolationError as err:
-            zhang = Propagate.zhangWrapper(windSpeedMean, AOD, sza, wTemp - 273.15, sal, relAz, sva, waveBands)
+        # try:
+        #     zhang = RhoCorrections.read_Z17_LUT(windSpeedMean, AOD, sza, wTemp - 273.15, sal, relAz, sva, waveBands)
+        # except InterpolationError as err:
+            # Utilities.writeLogFileAndPrint(f'{err}: Unable to use LUT interpolations. Reverting to analytical solution.')
+        zhang = Propagate.zhangWrapper(windSpeedMean, AOD, sza, wTemp - 273.15, sal, relAz, sva, waveBands)
         
         return zhang
 
@@ -578,8 +579,11 @@ class Propagate:
 
         # === The sensor ===
         # Current database is not limited near these values
-        sensor = {'ang': np.array([sva, 180 - relAz]), 'wv': np.array(waveBands)}
-
+        
+        # sensor = {'ang': np.array([sva, 180 - relAz]), 'wv': np.array(waveBands)}
+        relAz = np.min([180, 180 - relAz]) # TJ - I got an instance where rel_az was > 180, so added this as a fix.
+        sensor = {'ang': np.array([sva,  relAz]), 'wv': np.array(waveBands)} 
+    
         rho = ZhangRho.get_sky_sun_rho(env, sensor)['rho']
 
         return rho

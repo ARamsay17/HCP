@@ -1,11 +1,9 @@
+'''GUI to set up processing configuration'''
 import os
-import shutil, glob
+import shutil
 from PyQt5 import QtCore, QtGui, QtWidgets
-from pathlib import Path
 
 from Source import PATH_TO_CONFIG
-# from Source.MainConfig import MainConfig
-# from Source.Controller import Controller
 from Source.ConfigFile import ConfigFile
 from Source.CalibrationFileReader import CalibrationFileReader
 from Source.AnomalyDetection import AnomAnalWindow
@@ -14,7 +12,6 @@ from Source.SeaBASSHeaderWindow import SeaBASSHeaderWindow
 from Source.GetAnc_credentials import GetAnc_credentials
 from Source.OCproductsWindow import OCproductsWindow
 from Source.CalCharWindow import CalCharWindow
-
 
 class ConfigWindow(QtWidgets.QDialog):
     ''' Configuration window object '''
@@ -25,7 +22,6 @@ class ConfigWindow(QtWidgets.QDialog):
         self.name = name
         self.newName = ''
         self.inputDirectory = inputDir
-        self.FullCalDir = ''
         self.initUI()
 
 
@@ -62,8 +58,9 @@ class ConfigWindow(QtWidgets.QDialog):
         fsm.setNameFilters(["*.cal", "*.tdf", "*.ini", ".dat"])
         fsm.setNameFilterDisables(False)
         fsm.setFilter(QtCore.QDir.NoDotAndDotDot | QtCore.QDir.Files)
-        calibrationDir = os.path.splitext(self.name)[0] + "_Calibration"
-        self.calibrationPath = os.path.join(PATH_TO_CONFIG, calibrationDir)
+        # calibrationDir = os.path.splitext(self.name)[0] + "_Calibration"
+        # ConfigFile.settings['calibrationPath'] = os.path.join(PATH_TO_CONFIG, calibrationDir)
+        self.calibrationPath = ConfigFile.getCalibrationDirectory()
         index = fsm.setRootPath(self.calibrationPath)
         self.calibrationFileComboBox.setModel(fsm)
         self.calibrationFileComboBox.setRootModelIndex(index)
@@ -130,7 +127,7 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l1aCODCheckBox = QtWidgets.QCheckBox("", self)
         if ConfigFile.settings["bL1aCOD"]:
             self.l1aCODCheckBox.setChecked(True)
-        # self.l1aCODCheckBoxUpdate()
+        self.l1aCODCheckBoxUpdate()
         self.l1aCODCheckBox.clicked.connect(self.l1aCODCheckBoxUpdate)
 
         # L1AQC
@@ -231,7 +228,7 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l1bGetAncResetButton = QtWidgets.QPushButton("Reset credentials (GMAO or ECMWF)", self)
         self.l1bGetAncResetButton.clicked.connect(self.l1bGetAncResetButtonUpdate)
 
-        l1bSublabel6 = QtWidgets.QLabel("    Fallback values when no model available:", self)
+        l1bSublabel6 = QtWidgets.QLabel("    Fallback values when no ancillary or model data available:", self)
         # l1bSublabel5.setOpenExternalLinks(True)
         self.l1bGetAncCheckBox1 = QtWidgets.QCheckBox("GMAO MERRA2", self)
         self.l1bGetAncCheckBox2 = QtWidgets.QCheckBox("ECMWF CAMS", self)
@@ -240,32 +237,37 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l1bGetAncCheckBox1.clicked.connect(lambda: self.l1bGetAncCheckBoxUpdate('NASA_Earth_Data'))
         self.l1bGetAncCheckBox2.clicked.connect(lambda: self.l1bGetAncCheckBoxUpdate('ECMWF_ADS'))
 
-        self.l1bDefaultWindSpeedLabel = QtWidgets.QLabel("          Default Wind Speed (m/s)", self)
+        self.l1bDefaultWindSpeedLabel = QtWidgets.QLabel("          Wind (m/s)", self)
         self.l1bDefaultWindSpeedLineEdit = QtWidgets.QLineEdit(self)
         self.l1bDefaultWindSpeedLineEdit.setText(str(ConfigFile.settings["fL1bDefaultWindSpeed"]))
         self.l1bDefaultWindSpeedLineEdit.setValidator(doubleValidator)
-        self.l1bDefaultAODLabel = QtWidgets.QLabel("          Default AOD(550)", self)
+        self.l1bDefaultAODLabel = QtWidgets.QLabel("          AOD(550)", self)
         self.l1bDefaultAODLineEdit = QtWidgets.QLineEdit(self)
         self.l1bDefaultAODLineEdit.setText(str(ConfigFile.settings["fL1bDefaultAOD"]))
         self.l1bDefaultAODLineEdit.setValidator(doubleValidator)
-        self.l1bDefaultSaltLabel = QtWidgets.QLabel("          Default Salinity (psu)", self)
+        self.l1bDefaultAirTLabel = QtWidgets.QLabel("          AirT[C]", self)
+        self.l1bDefaultAirTLineEdit = QtWidgets.QLineEdit(self)
+        self.l1bDefaultAirTLineEdit.setText(str(ConfigFile.settings["fL1bDefaultAirT"]))
+        self.l1bDefaultAirTLineEdit.setValidator(doubleValidator)        
+        self.l1bDefaultSaltLabel = QtWidgets.QLabel("          Salt[psu]", self)
         self.l1bDefaultSaltLineEdit = QtWidgets.QLineEdit(self)
         self.l1bDefaultSaltLineEdit.setText(str(ConfigFile.settings["fL1bDefaultSalt"]))
         self.l1bDefaultSaltLineEdit.setValidator(doubleValidator)
-        self.l1bDefaultSSTLabel = QtWidgets.QLabel("          Default SST (C)", self)
+        self.l1bDefaultSSTLabel = QtWidgets.QLabel("          SST[C]", self)
         self.l1bDefaultSSTLineEdit = QtWidgets.QLineEdit(self)
         self.l1bDefaultSSTLineEdit.setText(str(ConfigFile.settings["fL1bDefaultSST"]))
         self.l1bDefaultSSTLineEdit.setValidator(doubleValidator)
 
         # Reset button for ancillary source credentials
-        self.l1bCalCharButton = QtWidgets.QPushButton("Select cal/char options", self)
+        self.l1bCalCharButton = QtWidgets.QPushButton("Select Cal/Char options", self)
         self.l1bCalCharButton.clicked.connect(self.l1bCalCharButtonPressed)
 
-        l1bInterpIntervalLabel = QtWidgets.QLabel("    Interpolation Interval (nm)", self)
-        self.l1bInterpIntervalLineEdit = QtWidgets.QLineEdit(self)
-        self.l1bInterpIntervalLineEdit.setText(str(ConfigFile.settings["fL1bInterpInterval"]))
-        self.l1bInterpIntervalLineEdit.setValidator(doubleValidator)
-        self.l1bInterpIntervalLineEdit.setDisabled(True) # No longer an option; not accomodated in uncertainties
+        # l1bInterpIntervalLabel = QtWidgets.QLabel("    Interpolation Interval (nm)", self)
+        # self.l1bInterpIntervalLineEdit = QtWidgets.QLineEdit(self)
+        # self.l1bInterpIntervalLineEdit.setText(str(ConfigFile.settings["fL1bInterpInterval"]))
+        # self.l1bInterpIntervalLineEdit.setValidator(doubleValidator)
+        # self.l1bInterpIntervalLineEdit.setDisabled(True) # No longer an option; not accomodated in uncertainties
+        # l1bInterpIntervalLabel.setDisabled(True)
 
         # l1bPlotTimeInterpLabel = QtWidgets.QLabel(f"    Generate Plots ({os.path.split(MainConfig.settings['outDir'])[-1]}/Plots/L1B_Interp/)", self)
         l1bPlotTimeInterpLabel = QtWidgets.QLabel("    Generate Interpolation Plots", self)
@@ -523,6 +525,11 @@ class ConfigWindow(QtWidgets.QDialog):
         if int(ConfigFile.settings["bL2BRDF_IOP"]) == 1:
             self.l2BRDF_IOPCheckBox.setChecked(True)
 
+        self.l2BRDF_O23Label = QtWidgets.QLabel("Pitarch IOP [beta]", self)
+        self.l2BRDF_O23CheckBox = QtWidgets.QCheckBox("", self)
+        if int(ConfigFile.settings["bL2BRDF_O23"]) == 1:
+            self.l2BRDF_O23CheckBox.setChecked(True)
+
         self.l2BRDFCheckBoxUpdate()
 
 
@@ -593,7 +600,7 @@ class ConfigWindow(QtWidgets.QDialog):
         l2UncertaintyBreakdownPlotsLabel = QtWidgets.QLabel("Unc. Plots (class-based only)", self)
         # l2UncertaintyBreakdownPlotLabel = QtWidgets.QLabel(" ", self)
         self.l2UncertaintyBreakdownPlotCheckBox = QtWidgets.QCheckBox("", self)
-        if int(ConfigFile.settings["bL2UncertaintyBreakdownPlot"]) == 1:
+        if ConfigFile.settings["bL2UncertaintyBreakdownPlot"]:
             self.l2UncertaintyBreakdownPlotCheckBox.setChecked(True)
 
         self.l2StationsCheckBox.clicked.connect(self.l2StationsCheckBoxUpdate)
@@ -603,6 +610,7 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l2BRDFCheckBox.clicked.connect(self.l2BRDFCheckBoxUpdate)
         self.l2BRDF_fQCheckBox.clicked.connect(self.l2BRDF_fQCheckBoxUpdate)
         self.l2BRDF_IOPCheckBox.clicked.connect(self.l2BRDF_IOPCheckBoxUpdate)
+        self.l2BRDF_O23CheckBox.clicked.connect(self.l2BRDF_O23CheckBoxUpdate)
 
         self.l2OCproducts = QtWidgets.QPushButton("Derived L2 Ocean Color Products", self)
         self.l2OCproducts.clicked.connect(self.l2OCproductsButtonPressed)
@@ -757,9 +765,6 @@ class ConfigWindow(QtWidgets.QDialog):
         deglitchHBox.addWidget(self.l1aqcDeglitchLabel)
         deglitchHBox.addWidget(self.l1aqcDeglitchCheckBox)
         VBox2.addLayout(deglitchHBox)
-        #       L1AQC Anomaly Launcher
-        # VBox2.addWidget(l1aqcAnomalySublabel1)
-        # VBox2.addWidget(l1aqcAnomalySublabel2)
         VBox2.addWidget(self.l1aqcAnomalyButton)
 
         # L1B
@@ -779,33 +784,34 @@ class ConfigWindow(QtWidgets.QDialog):
         VBox2.addWidget(l1bSublabel6)
 
         #   Default Wind
-        WindSpeedHBox2 = QtWidgets.QHBoxLayout()
-        WindSpeedHBox2.addWidget(self.l1bDefaultWindSpeedLabel)
-        WindSpeedHBox2.addWidget(self.l1bDefaultWindSpeedLineEdit)
-        VBox2.addLayout(WindSpeedHBox2)
+        WindSpeedHBox = QtWidgets.QHBoxLayout()
+        WindSpeedHBox.addWidget(self.l1bDefaultWindSpeedLabel)
+        WindSpeedHBox.addWidget(self.l1bDefaultWindSpeedLineEdit)
+        VBox2.addLayout(WindSpeedHBox)
         #   Default AOD
-        AODHBox2 = QtWidgets.QHBoxLayout()
-        AODHBox2.addWidget(self.l1bDefaultAODLabel)
-        AODHBox2.addWidget(self.l1bDefaultAODLineEdit)
-        VBox2.addLayout(AODHBox2)
+        AirHBox = QtWidgets.QHBoxLayout()
+        AirHBox.addWidget(self.l1bDefaultAODLabel)
+        AirHBox.addWidget(self.l1bDefaultAODLineEdit)
+        #   Default AirT
+        AirHBox.addWidget(self.l1bDefaultAirTLabel)
+        AirHBox.addWidget(self.l1bDefaultAirTLineEdit)
+        VBox2.addLayout(AirHBox)
         #   Default Salt
-        SaltHBox2 = QtWidgets.QHBoxLayout()
-        SaltHBox2.addWidget(self.l1bDefaultSaltLabel)
-        SaltHBox2.addWidget(self.l1bDefaultSaltLineEdit)
-        VBox2.addLayout(SaltHBox2)
+        SeaHBox = QtWidgets.QHBoxLayout()
+        SeaHBox.addWidget(self.l1bDefaultSaltLabel)
+        SeaHBox.addWidget(self.l1bDefaultSaltLineEdit)
         #   Default SST
-        SSTHBox2 = QtWidgets.QHBoxLayout()
-        SSTHBox2.addWidget(self.l1bDefaultSSTLabel)
-        SSTHBox2.addWidget(self.l1bDefaultSSTLineEdit)
-        VBox2.addLayout(SSTHBox2)
+        SeaHBox.addWidget(self.l1bDefaultSSTLabel)
+        SeaHBox.addWidget(self.l1bDefaultSSTLineEdit)
+        VBox2.addLayout(SeaHBox)        
 
         VBox2.addWidget(self.l1bCalCharButton)
 
         #   Interpolation interval (wavelength)
-        interpHBox = QtWidgets.QHBoxLayout()
-        interpHBox.addWidget(l1bInterpIntervalLabel)
-        interpHBox.addWidget(self.l1bInterpIntervalLineEdit)
-        VBox2.addLayout(interpHBox)
+        # interpHBox = QtWidgets.QHBoxLayout()
+        # interpHBox.addWidget(l1bInterpIntervalLabel)
+        # interpHBox.addWidget(self.l1bInterpIntervalLineEdit)
+        # VBox2.addLayout(interpHBox)
 
         l1bPlotTimeInterpHBox = QtWidgets.QHBoxLayout()
         l1bPlotTimeInterpHBox.addWidget(l1bPlotTimeInterpLabel)
@@ -987,6 +993,8 @@ class ConfigWindow(QtWidgets.QDialog):
         BRDFHBox2.addWidget(self.l2BRDF_fQCheckBox)
         BRDFHBox2.addWidget(self.l2BRDF_IOPLabel)
         BRDFHBox2.addWidget(self.l2BRDF_IOPCheckBox)
+        BRDFHBox2.addWidget(self.l2BRDF_O23Label)
+        BRDFHBox2.addWidget(self.l2BRDF_O23CheckBox)
         BRDFVBox.addLayout(BRDFHBox2)
         VBox4.addLayout(BRDFVBox)
 
@@ -1198,8 +1206,7 @@ class ConfigWindow(QtWidgets.QDialog):
         print("CalibrationEditWindow - Calibration File Changed")
         print("Current index",i,"selection changed ", self.calibrationFileComboBox.currentText())
         calFileName = self.calibrationFileComboBox.currentText()
-        calDir = ConfigFile.getCalibrationDirectory()
-        calPath = os.path.join(calDir, calFileName)
+        calPath = os.path.join(self.calibrationPath, calFileName)
         if os.path.isfile(calPath):
             self.getCalibrationSettings()
             self.calibrationEnabledCheckBox.setEnabled(True)
@@ -1347,67 +1354,6 @@ class ConfigWindow(QtWidgets.QDialog):
         anomAnalDialog = AnomAnalWindow(self.inputDirectory, self)
         anomAnalDialog.show()
 
-    def l1bPlotTimeInterpCheckBoxUpdate(self):
-        print("ConfigWindow - l1bPlotTimeInterpCheckBoxUpdate")
-        if self.l1bPlotTimeInterpCheckBox.isChecked():
-            ConfigFile.settings["bL1bPlotTimeInterp"] = 1
-        else:
-            ConfigFile.settings["bL1bPlotTimeInterp"] = 0
-
-    def l1bqcLtUVNIRCheckBoxUpdate(self):
-        print("ConfigWindow - l2UVNIRCheckBoxUpdate")
-
-        if self.l1bqcLtUVNIRCheckBox.isChecked():
-            ConfigFile.settings["bL1bqcLtUVNIR"] = 1
-        else:
-            ConfigFile.settings["bL1bqcLtUVNIR"] = 0
-
-    def l1bqcSpecQualityCheckBoxUpdate(self):
-        print("ConfigWindow - l1bqcSpecQualityCheckBoxUpdate")
-
-        disabled = not self.l1bqcSpecQualityCheckBox.isChecked()
-        self.l1bqcSpecFilterLiLabel.setDisabled(disabled)
-        self.l1bqcSpecFilterLiLineEdit.setDisabled(disabled)
-        self.l1bqcSpecFilterLtLabel.setDisabled(disabled)
-        self.l1bqcSpecFilterLtLineEdit.setDisabled(disabled)
-        self.l1bqcSpecFilterEsLabel.setDisabled(disabled)
-        self.l1bqcSpecFilterEsLineEdit.setDisabled(disabled)
-
-        self.l1bqcSpecQualityCheckPlotBox.setDisabled(disabled)
-
-        if disabled:
-            ConfigFile.settings["bL1bqcEnableSpecQualityCheck"] = 0
-            ConfigFile.settings["bL1bqcEnableSpecQualityCheckPlot"] = 0
-            self.l1bqcSpecQualityCheckPlotBox.setChecked(False)
-        else:
-            ConfigFile.settings["bL1bqcEnableSpecQualityCheck"] = 1
-
-    def l1bqcSpecQualityCheckPlotBoxUpdate(self):
-        print("ConfigWindow - l1bqcSpecQualityCheckPlotBoxUpdate")
-
-        disabled = not self.l1bqcSpecQualityCheckPlotBox.isChecked()
-        if disabled:
-            ConfigFile.settings["bL1bqcEnableSpecQualityCheckPlot"] = 0
-        else:
-            ConfigFile.settings["bL1bqcEnableSpecQualityCheckPlot"] = 1
-
-    def l1bqcQualityFlagCheckBoxUpdate(self):
-        print("ConfigWindow - l1bqcQualityFlagCheckBoxUpdate")
-
-        disabled = not self.l1bqcQualityFlagCheckBox.isChecked()
-        self.l1bqcCloudFlagLabel.setDisabled(disabled)
-        self.l1bqcCloudFlagLineEdit.setDisabled(disabled)
-        self.l1bqcEsFlagLabel.setDisabled(disabled)
-        self.l1bqcEsFlagLineEdit.setDisabled(disabled)
-        self.l1bqcDawnDuskFlagLabel.setDisabled(disabled)
-        self.l1bqcDawnDuskFlagLineEdit.setDisabled(disabled)
-        self.l1bqcRainfallHumidityFlagLabel.setDisabled(disabled)
-        self.l1bqcRainfallHumidityFlagLineEdit.setDisabled(disabled)
-        if disabled:
-            ConfigFile.settings["bL2EnableQualityFlags"] = 0
-        else:
-            ConfigFile.settings["bL2EnableQualityFlags"] = 1
-
     def l1bGetAncUntickIfNoCredentials(self,ancillarySource):
         '''
         ancillarySource: a string, either 'NASA_Earth_Data' or 'ECMWF_ADS'
@@ -1522,18 +1468,78 @@ class ConfigWindow(QtWidgets.QDialog):
         CalCharWindowDialog = CalCharWindow(self.name,self)
         CalCharWindowDialog.show()
 
+    def l1bPlotTimeInterpCheckBoxUpdate(self):
+        print("ConfigWindow - l1bPlotTimeInterpCheckBoxUpdate")
+        if self.l1bPlotTimeInterpCheckBox.isChecked():
+            ConfigFile.settings["bL1bPlotTimeInterp"] = 1
+        else:
+            ConfigFile.settings["bL1bPlotTimeInterp"] = 0
+
+    def l1bqcLtUVNIRCheckBoxUpdate(self):
+        print("ConfigWindow - l2UVNIRCheckBoxUpdate")
+
+        if self.l1bqcLtUVNIRCheckBox.isChecked():
+            ConfigFile.settings["bL1bqcLtUVNIR"] = 1
+        else:
+            ConfigFile.settings["bL1bqcLtUVNIR"] = 0
+
+    def l1bqcSpecQualityCheckBoxUpdate(self):
+        print("ConfigWindow - l1bqcSpecQualityCheckBoxUpdate")
+
+        disabled = not self.l1bqcSpecQualityCheckBox.isChecked()
+        self.l1bqcSpecFilterLiLabel.setDisabled(disabled)
+        self.l1bqcSpecFilterLiLineEdit.setDisabled(disabled)
+        self.l1bqcSpecFilterLtLabel.setDisabled(disabled)
+        self.l1bqcSpecFilterLtLineEdit.setDisabled(disabled)
+        self.l1bqcSpecFilterEsLabel.setDisabled(disabled)
+        self.l1bqcSpecFilterEsLineEdit.setDisabled(disabled)
+
+        self.l1bqcSpecQualityCheckPlotBox.setDisabled(disabled)
+
+        if disabled:
+            ConfigFile.settings["bL1bqcEnableSpecQualityCheck"] = 0
+            ConfigFile.settings["bL1bqcEnableSpecQualityCheckPlot"] = 0
+            self.l1bqcSpecQualityCheckPlotBox.setChecked(False)
+        else:
+            ConfigFile.settings["bL1bqcEnableSpecQualityCheck"] = 1
+
+    def l1bqcSpecQualityCheckPlotBoxUpdate(self):
+        print("ConfigWindow - l1bqcSpecQualityCheckPlotBoxUpdate")
+
+        disabled = not self.l1bqcSpecQualityCheckPlotBox.isChecked()
+        if disabled:
+            ConfigFile.settings["bL1bqcEnableSpecQualityCheckPlot"] = 0
+        else:
+            ConfigFile.settings["bL1bqcEnableSpecQualityCheckPlot"] = 1
+
+    def l1bqcQualityFlagCheckBoxUpdate(self):
+        print("ConfigWindow - l1bqcQualityFlagCheckBoxUpdate")
+
+        disabled = not self.l1bqcQualityFlagCheckBox.isChecked()
+        self.l1bqcCloudFlagLabel.setDisabled(disabled)
+        self.l1bqcCloudFlagLineEdit.setDisabled(disabled)
+        self.l1bqcEsFlagLabel.setDisabled(disabled)
+        self.l1bqcEsFlagLineEdit.setDisabled(disabled)
+        self.l1bqcDawnDuskFlagLabel.setDisabled(disabled)
+        self.l1bqcDawnDuskFlagLineEdit.setDisabled(disabled)
+        self.l1bqcRainfallHumidityFlagLabel.setDisabled(disabled)
+        self.l1bqcRainfallHumidityFlagLineEdit.setDisabled(disabled)
+        if disabled:
+            ConfigFile.settings["bL2EnableQualityFlags"] = 0
+        else:
+            ConfigFile.settings["bL2EnableQualityFlags"] = 1
 
     def l2SVARadioButtonDefaultClicked(self):
         print("ConfigWindow - l2SVA set to 40")
         self.SVARadioButtonDefault.setChecked(True)
         self.SVARadioButton30.setChecked(False)
         ConfigFile.settings["fL2SVA"] = 40
+        
     def l2SVARadioButton30Clicked(self):
         print("ConfigWindow - l2SVA set to 30")
         self.SVARadioButtonDefault.setChecked(False)
         self.SVARadioButton30.setChecked(True)
         ConfigFile.settings["fL2SVA"] = 30
-    
 
     def l2StationsCheckBoxUpdate(self):
         print("ConfigWindow - l2StationsCheckBoxUpdate")
@@ -1641,13 +1647,23 @@ class ConfigWindow(QtWidgets.QDialog):
         self.l2BRDF_fQLabel.setDisabled(disabled)
         self.l2BRDF_IOPCheckBox.setDisabled(disabled)
         self.l2BRDF_IOPLabel.setDisabled(disabled)
+        self.l2BRDF_O23CheckBox.setDisabled(disabled)
+        self.l2BRDF_O23Label.setDisabled(disabled)
 
         if disabled:
             ConfigFile.settings["bL2BRDF"] = 0
             ConfigFile.settings["bL2BRDF_fQ"] = 0
             ConfigFile.settings["bL2BRDF_IOP"] = 0
+            ConfigFile.settings["bL2BRDF_O23"] = 0
             self.l2BRDF_fQCheckBox.setChecked(False)
             self.l2BRDF_IOPCheckBox.setChecked(False)
+            self.l2BRDF_O23CheckBox.setChecked(False)
+        elif ConfigFile.settings["bL2BRDF_fQ"] == 0 and ConfigFile.settings["bL2BRDF_IOP"] == 0 and ConfigFile.settings["bL2BRDF_O23"] == 0:
+            ConfigFile.settings["bL2BRDF_IOP"] = 1
+            self.l2BRDF_fQCheckBox.setChecked(False)
+            self.l2BRDF_IOPCheckBox.setChecked(True)
+            self.l2BRDF_O23CheckBox.setChecked(False)
+
 
     # Make BRDF type exclusive so that it is clear what is written to SeaBASS output
     #   Reprocess to change to another BRDF type
@@ -1656,20 +1672,42 @@ class ConfigWindow(QtWidgets.QDialog):
         disabled = (not self.l2BRDF_fQCheckBox.isChecked())
         if disabled:
             ConfigFile.settings["bL2BRDF_fQ"] = 0
+            self.l2BRDF_fQCheckBox.setChecked(False)
         else:
             ConfigFile.settings["bL2BRDF_fQ"] = 1
             ConfigFile.settings["bL2BRDF_IOP"] = 0
+            ConfigFile.settings["bL2BRDF_O23"] = 0
+            self.l2BRDF_fQCheckBox.setChecked(True)
             self.l2BRDF_IOPCheckBox.setChecked(False)
+            self.l2BRDF_O23CheckBox.setChecked(False)
 
     def l2BRDF_IOPCheckBoxUpdate(self):
         print("ConfigWindow - l2BRDF_IOPCheckBoxUpdate")
         disabled = (not self.l2BRDF_IOPCheckBox.isChecked())
         if disabled:
             ConfigFile.settings["bL2BRDF_IOP"] = 0
+            self.l2BRDF_IOPCheckBox.setChecked(False)
         else:
-            ConfigFile.settings["bL2BRDF_IOP"] = 1
             ConfigFile.settings["bL2BRDF_fQ"] = 0
+            ConfigFile.settings["bL2BRDF_IOP"] = 1
+            ConfigFile.settings["bL2BRDF_O23"] = 0
             self.l2BRDF_fQCheckBox.setChecked(False)
+            self.l2BRDF_IOPCheckBox.setChecked(True)
+            self.l2BRDF_O23CheckBox.setChecked(False)
+
+    def l2BRDF_O23CheckBoxUpdate(self):
+        print("ConfigWindow - l2BRDF_O23CheckBoxUpdate")
+        disabled = (not self.l2BRDF_O23CheckBox.isChecked())
+        if disabled:
+            ConfigFile.settings["bL2BRDF_O23"] = 0
+            self.l2BRDF_O23CheckBox.setChecked(False)
+        else:
+            ConfigFile.settings["bL2BRDF_fQ"] = 0
+            ConfigFile.settings["bL2BRDF_IOP"] = 0
+            ConfigFile.settings["bL2BRDF_O23"] = 1
+            self.l2BRDF_fQCheckBox.setChecked(False)
+            self.l2BRDF_IOPCheckBox.setChecked(False)
+            self.l2BRDF_O23CheckBox.setChecked(True)
 
     def l2OCproductsButtonPressed(self):
         print("OC Products Dialogue")
@@ -1766,7 +1804,7 @@ class ConfigWindow(QtWidgets.QDialog):
         ConfigFile.settings["fL1bDefaultAOD"] = float(self.l1bDefaultAODLineEdit.text())
         ConfigFile.settings["fL1bDefaultSalt"] = float(self.l1bDefaultSaltLineEdit.text())
         ConfigFile.settings["fL1bDefaultSST"] = float(self.l1bDefaultSSTLineEdit.text())
-        ConfigFile.settings["fL1bInterpInterval"] = float(self.l1bInterpIntervalLineEdit.text())
+        # ConfigFile.settings["fL1bInterpInterval"] = float(self.l1bInterpIntervalLineEdit.text())
         ConfigFile.settings["bL1bPlotTimeInterp"] = int(self.l1bPlotTimeInterpCheckBox.isChecked())
         ConfigFile.settings["fL1bPlotInterval"] = float(self.l1bPlotIntervalLineEdit.text())
 
@@ -1806,6 +1844,7 @@ class ConfigWindow(QtWidgets.QDialog):
         ConfigFile.settings["bL2BRDF"] = int(self.l2BRDFCheckBox.isChecked())
         ConfigFile.settings["bL2BRDF_fQ"] = int(self.l2BRDF_fQCheckBox.isChecked())
         ConfigFile.settings["bL2BRDF_IOP"] = int(self.l2BRDF_IOPCheckBox.isChecked())
+        ConfigFile.settings["bL2BRDF_O23"] = int(self.l2BRDF_O23CheckBox.isChecked())
 
         ConfigFile.settings["bL2WeightMODISA"] = int(self.l2WeightMODISACheckBox.isChecked())
         ConfigFile.settings["bL2WeightSentinel3A"] = int(self.l2WeightSentinel3ACheckBox.isChecked())

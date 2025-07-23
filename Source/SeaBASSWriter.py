@@ -49,6 +49,9 @@ class SeaBASSWriter:
             wind.datasetToColumns()
             winCol = wind.columns["WINDSPEED"]
             aveWind = np.nanmean(winCol)
+        else:
+            # Cannot get here. level force to 2
+            esData = None
 
         if ConfigFile.settings['SensorType'].lower() =='trios':
             fileNameString = node.attributes['RAW_FILE_NAME']
@@ -97,10 +100,11 @@ class SeaBASSWriter:
             station = node.getGroup('ANCILLARY').getDataset('STATION').data[0][2]
             headerBlock['station'] = station
         else:
-            if ConfigFile.settings['SensorType'].lower() =='trios':
-                headerBlock['station'] = headerRawNames
-            else:
-                headerBlock['station'] = node.attributes['RAW_FILE_NAME'].split('.')[0]
+            # if ConfigFile.settings['SensorType'].lower() =='trios':
+                # headerBlock['station'] = headerRawNames
+            headerBlock['station'] = node.attributes['L1BQC_FILE_NAME'].split('.')[0]
+            # else:
+                # headerBlock['station'] = node.attributes['RAW_FILE_NAME'].split('.')[0]
         if headerBlock['start_time'] == '':
             headerBlock['start_time'] = startTime
         if headerBlock['end_time'] == '':
@@ -117,6 +121,8 @@ class SeaBASSWriter:
             headerBlock['east_longitude'] = eastLon
         if headerBlock['west_longitude'] == '':
             headerBlock['west_longitude'] = westLon
+        if headerBlock['documents'] == '':
+            headerBlock['documents'] = 'README.md'
         if level == '2':
             headerBlock['wind_speed'] = aveWind
         return headerBlock
@@ -240,12 +246,13 @@ class SeaBASSWriter:
         outFile = open(outFileName,'w',newline='\n')
         outFile.write('/begin_header\n')
         for key,value in headerBlock.items():
-            if key != 'comments' and key != 'other_comments' and key != 'version' and key != 'platform':
+            if key != 'comments' and key != 'other_comments' and key != 'version':# and key != 'platform':
                 line = f'/{key}={value}\n'
                 outFile.write(line)
-            if key == 'platform':
-                line = f'!/{key}={value}\n'
-                outFile.write(line)
+            # if key == 'platform':
+            #     # NOTE: While header is pending at SeaBASS
+            #     line = f'!/{key}={value}\n'
+            #     outFile.write(line)
         outFile.write(headerBlock['comments']+'\n')
         outFile.write(headerBlock['other_comments']+'\n')
         outFile.write('/fields='+fields+'\n')
@@ -286,8 +293,16 @@ class SeaBASSWriter:
 
         rrsData = reflectanceGroup.getDataset("Rrs_HYPER")
         rrsUnc = reflectanceGroup.getDataset("Rrs_HYPER_unc")
+        # Fallback uncertainty for non-SeaBird, Factory regime
+        if rrsUnc is None:
+            rrsUnc = reflectanceGroup.getDataset("Rrs_HYPER_sd")
+
         nLwData = reflectanceGroup.getDataset("nLw_HYPER")
         nLwUnc = reflectanceGroup.getDataset("nLw_HYPER_unc")
+        # Fallback uncertainty for non-SeaBird, Factory regime
+        if nLwUnc is None:
+            nLwUnc = reflectanceGroup.getDataset("nLw_HYPER_sd")
+
         if ConfigFile.settings['bL2BRDF']:
             if ConfigFile.settings['bL2BRDF_fQ']:
                 nLwData_BRDF = reflectanceGroup.getDataset("nLw_HYPER_M02")
@@ -295,11 +310,17 @@ class SeaBASSWriter:
             if ConfigFile.settings['bL2BRDF_IOP']:
                 nLwData_BRDF = reflectanceGroup.getDataset("nLw_HYPER_L11")
                 rrsData_BRDF = reflectanceGroup.getDataset("Rrs_HYPER_L11")
+            if ConfigFile.settings['bL2BRDF_O23']:
+                nLwData_BRDF = reflectanceGroup.getDataset("nLw_HYPER_O23")
+                rrsData_BRDF = reflectanceGroup.getDataset("Rrs_HYPER_O23")
             # There are currently no additional uncertainties added for BRDF
             # nLwUnc_BRDF = reflectanceGroup.getDataset("nLw_HYPER_unc")
 
         esData = irradianceGroup.getDataset("ES_HYPER")
-        esUnc = irradianceGroup.getDataset("ES_HYPER_sd")
+        esUnc = irradianceGroup.getDataset("ES_HYPER_unc")
+        # Fallback uncertainty for non-SeaBird, Factory regime
+        if esUnc is None:
+            esUnc = irradianceGroup.getDataset("ES_HYPER_sd")
 
         # Keep for now, but these won't be output for SeaBASS
         # They are of little use to others...
@@ -356,6 +377,9 @@ class SeaBASSWriter:
         if rrsUnc is not None:
             rrsColsUnc = rrsUnc.columns
             nLwColsUnc = nLwUnc.columns
+        else:
+            rrsColsUnc = None
+            nLwColsUnc = None
 
         for k in list(esCols.keys()):
             if (k != 'Datetag') and (k != 'Timetag2'):
@@ -588,6 +612,10 @@ class SeaBASSWriter:
             if ConfigFile.settings['bL2BRDF_IOP']:
                 SeaBASSWriter.writeSeaBASS('Lwn_L11',fp,headerBlock,formattednLw_BRDF,fieldsnLw_BRDF,unitsnLw_BRDF)
                 SeaBASSWriter.writeSeaBASS('Rrs_L11',fp,headerBlock,formattedRrs_BRDF,fieldsRrs_BRDF,unitsRrs_BRDF)
+
+            if ConfigFile.settings['bL2BRDF_O23']:
+                SeaBASSWriter.writeSeaBASS('Lwn_O23',fp,headerBlock,formattednLw_BRDF,fieldsnLw_BRDF,unitsnLw_BRDF)
+                SeaBASSWriter.writeSeaBASS('Rrs_O23',fp,headerBlock,formattedRrs_BRDF,fieldsRrs_BRDF,unitsRrs_BRDF)
 
         # SeaBASSWriter.writeSeaBASS('LI',fp,headerBlock,formattedLi,fieldsLi,unitsLi)
         # SeaBASSWriter.writeSeaBASS('LT',fp,headerBlock,formattedLt,fieldsLt,unitsLt)

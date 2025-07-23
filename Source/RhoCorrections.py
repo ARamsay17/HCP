@@ -60,11 +60,11 @@ class RhoCorrections:
         # TODO: find the source of the windspeed uncertainty to reference this. EMWCF should have this info
         # TODO: Model error estimation, requires ancillary data to be switched on. This could create a conflict.
         if not any([AOD is None, wTemp is None, sal is None, waveBands is None]) and \
-                ((ConfigFile.settings["bL1bCal"] > 1) or (ConfigFile.settings['SensorType'].lower() == "seabird") \
+                ((ConfigFile.settings["fL1bCal"] > 1) or (ConfigFile.settings['SensorType'].lower() == "seabird") \
                  or (ConfigFile.settings['SensorType'].lower() == "dalec")):
             # Fix: Truncate input parameters to stay within Zhang ranges:
             # AOD
-            AOD = np.min([AOD,0.2])
+            AOD = np.min([AOD,0.5])
             # SZA
             if SZAMean >= 70:
                 raise ValueError('SZAMean is too high (%s), Zhang correction cannot be performed above SZA=70.')
@@ -78,17 +78,14 @@ class RhoCorrections:
             try:
                 zhang = RhoCorrections.read_Z17_LUT(windSpeedMean, AOD, SZAMean, wTemp, sal, relAzMean, SVA, newWaveBands)
             except (InterpolationError, NotImplementedError) as err:
-                msg = f"RhoCorrections: {err}"
-                print(msg)
-                Utilities.writeLogFile(msg)
-                print("running zhang gling correction")
+                Utilities.writeLogFileAndPrint(f'{err}: Unable to use LUT interpolations. Reverting to analytical solution.')
                 zhang, _ = RhoCorrections.ZhangCorr(windSpeedMean, AOD, cloud, SZAMean, wTemp, sal, relAzMean, SVA, newWaveBands)
-            
+
             # this is the method to read zhang from the LUT. It is commented out pending the sensitivity study and
             # correction to the interpolation errors that have been noted.
             if isinstance(zhang, float):
                 raise ValueError("Interpolation of zhnag lookup table failed")
-            
+
             # |M99 - Z17| is an estimation of model error, added to MC M99 uncertainty in quadrature to give combined
             # uncertainty
             pct_diff = (np.abs(rhoScalar - zhang) / rhoScalar)  # relative units
@@ -154,10 +151,7 @@ class RhoCorrections:
     @staticmethod
     # def ZhangCorr(windSpeedMean, AOD, cloud, sza, wTemp, sal, relAz, waveBands):
     def ZhangCorr(windSpeedMean, AOD, cloud, sza, wTemp, sal, relAz, sva, waveBands, Propagate = None, db = None):
-
-        msg = 'Calculating Zhang glint correction.'
-        print(msg)
-        Utilities.writeLogFile(msg)
+        Utilities.writeLogFileAndPrint('Calculating Zhang glint correction (FULL MODEL).')
 
         # === environmental conditions during experiment ===
         env = {'wind': windSpeedMean, 'od': AOD, 'C': cloud, 'zen_sun': sza, 'wtem': wTemp, 'sal': sal}
@@ -175,9 +169,7 @@ class RhoCorrections:
 
         tic = time.process_time()
         rhoVector = get_sky_sun_rho(env, sensor, round4cache=True, DB=db)['rho']
-        msg = f'Zhang17 Elapsed Time: {time.process_time() - tic:.1f} s'
-        print(msg)
-        Utilities.writeLogFile(msg)
+        Utilities.writeLogFileAndPrint(f'Zhang17 Elapsed Time: {time.process_time() - tic:.1f} s')
 
         # Presumably obsolete (Ashley)? -DAA
         # No I'm only changing how the zhang uncertainties work - this all happes in uncertianty_analysis.py - Ashley
@@ -190,9 +182,7 @@ class RhoCorrections:
             rhoDelta = Propagate.Zhang_Rho_Uncertainty(mean_vals=varlist,
                                                        uncertainties=ulist,
                                                        )
-            msg = f'Zhang_Rho_Uncertainty Elapsed Time: {time.process_time() - tic:.1f} s'
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(f'Zhang_Rho_Uncertainty Elapsed Time: {time.process_time() - tic:.1f} s')
 
         return rhoVector, rhoDelta
 
@@ -202,19 +192,15 @@ class RhoCorrections:
         windSpeedMean, AOD, SZAMean, wTemp, sal, relAzMean, newWaveBands, zhang
 
         """
-        
-        # convert wt to kelvin so we can't have negative values
 
         if sva == 30:
             # raise not implemented error until LUT is complete for VZA 30 (should take a couple days) - Ashley
-            raise NotImplementedError("LUT for VZA of 30 is still under development")
-            db_path = "Z17_LUT_30_old.nc"
-            msg = f"running Z17 interpolation for instrument viewing zenith of 30"
+            # raise NotImplementedError("LUT for VZA of 30 is still under development")
+            db_path = "Z17_LUT_30.nc"
+            Utilities.writeLogFileAndPrint("running Z17 interpolation for instrument viewing zenith of 30",False)
         else:
             db_path = "Z17_LUT_40.nc"
-            msg = f"running Z17 interpolation for instrument viewing zenith of 40"
-
-        Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint("running Z17 interpolation for instrument viewing zenith of 40",False)
 
         try:
             LUT = xr.open_dataset(os.path.join(PATH_TO_DATA, db_path), engine='netcdf4')
@@ -224,28 +210,55 @@ class RhoCorrections:
         import scipy.interpolate as spin
 
         try:
-            zhang_interp = spin.interpn(
-                points=(
-                    LUT.wind.values,
-                    LUT.aot.values,
-                    LUT.sza.values,
-                    LUT.relAz.values,
-                    LUT.sal.values,
-                    LUT.SST.values,
-                    LUT.wavelength.values
-                ),
-                values=LUT.Glint.values,
-                xi=(
-                    ws,
-                    aod,
-                    sza,
-                    rel_az,
-                    sal,
-                    wt,
-                    nwb
-                ),
-                method="cubic",
-            )
+            if ConfigFile.settings['SensorType'].lower() == "sorad":
+                zhang_interp = spin.interpn(
+                    points=(
+                        LUT.wind.values,
+                        LUT.aot.values,
+                        LUT.sza.values,
+                        LUT.relAz.values,
+                        LUT.sal.values,
+                        LUT.SST.values,
+                        LUT.wavelength.values
+                    ),
+                    values=LUT.Glint.values,
+                    xi=(
+                        ws,
+                        aod,
+                        sza,
+                        rel_az,
+                        sal,
+                        wt,
+                        nwb
+                    ),
+                    method="pchip", # should be cubic - temporary fix due to memory issues
+                )
+                print('Interpolating Z17 LUT using pchip (3rd order Hermitian Polynomial) method')
+            else:
+                zhang_interp = spin.interpn(
+                    points=(
+                        LUT.wind.values,
+                        LUT.aot.values,
+                        LUT.sza.values,
+                        LUT.relAz.values,
+                        LUT.sal.values,
+                        LUT.SST.values,
+                        LUT.wavelength.values
+                    ),
+                    values=LUT.Glint.values,
+                    xi=(
+                        ws,
+                        aod,
+                        sza,
+                        rel_az,
+                        sal,
+                        wt,
+                        nwb
+                    ),
+                    method="cubic",
+                )
+                print('Interpolating Z17 LUT using cubic method')
+            
         except ValueError as err:
             raise InterpolationError(f"Interpolation of Z17 LUT failed with {err}")
         else:

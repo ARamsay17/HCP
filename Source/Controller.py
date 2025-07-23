@@ -60,8 +60,7 @@ class Controller:
                     msg = "Controller.writeReport: Unable to open HDF file. May be open in another application."
                     if MainConfig.settings["popQuery"] == 0 and os.getenv('HYPERINSPACE_CMD') != 'TRUE':
                         Utilities.errorWindow("File Error", msg)
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return
 
             else:
@@ -84,10 +83,10 @@ class Controller:
         inLogPath = os.path.join(PACKAGE_DIR, 'Logs')
 
         inPlotPath = os.path.join(pathOut,'Plots')
-        # The inPlotPath is going to be different for L1A-L1E than L2 for many cruises...
-        # In that case, move up one directory
-        if os.path.isdir(os.path.join(inPlotPath, 'L1AQC_Anoms')) is False:
-            inPlotPath = os.path.join(pathOut,'..','Plots')
+        # # The inPlotPath is going to be different for L1A-L1E than L2 for many cruises...
+        # # In that case, move up one directory
+        # if os.path.isdir(os.path.join(inPlotPath, 'L1AQC_Anoms')) is False:
+        #     inPlotPath = os.path.join(pathOut,'..','Plots')
 
         outHDF = os.path.split(outFilePath)[1]
 
@@ -139,8 +138,7 @@ class Controller:
         except Exception:
             msg = '**********************Unable to write the PDF file. It may be open in another program.**********************'
             Utilities.errorWindow("File Error", msg)
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
 
     @staticmethod
     def generateContext(calibrationMap):
@@ -224,18 +222,23 @@ class Controller:
                     del calibrationMap[key]
             else:
                 del calibrationMap[key]
+
         return calibrationMap
 
     @staticmethod
     def processCalibrationConfigTrios(calFiles):
-        ''' Write pseudo calibration/configuration map for TriOS'''
+        ''' Write calibration/configuration map for TriOS'''
+
+        configFileName = ConfigFile.filename
+        calFolder = os.path.splitext(configFileName)[0] + "_Calibration"
+        calPath = os.path.join(PATH_TO_CONFIG, calFolder)
+        print("Read CalibrationFile ", calPath)
 
         # print("processCalibrationConfig")
         calibrationMap = collections.OrderedDict()
 
         for key in list(calFiles.keys()):
             cf = CalibrationFile()
-            print(key)
             if '.ini' in key:
                 if calFiles[key]["enabled"]:
                     cf.id = key
@@ -280,10 +283,6 @@ class Controller:
             print("Specified ancillary file not found: " + fp)
             return None
         ancillaryData = AncillaryReader.readAncillary(fp)
-
-        # if ConfigFile.settings['SensorType'].lower() == 'trios':
-        #     ancillaryData.columns['RELAZ'] = ancillaryData.columns['HOMEANGLE']
-        #     del ancillaryData.columns['HOMEANGLE']
         return ancillaryData
 
     @staticmethod
@@ -296,8 +295,7 @@ class Controller:
         if test is False:
             return None, None
 
-        msg = "ProcessL1a"
-        print(msg)
+        Utilities.writeLogFileAndPrint("ProcessL1a")
 
         # Process the data
         outFFPs = None
@@ -307,7 +305,7 @@ class Controller:
         elif ConfigFile.settings["SensorType"].lower() == "trios":
             root, outFFPs = ProcessL1aTriOS.processL1a(inFilePath, outFilePath)
         elif ConfigFile.settings["SensorType"].lower() == "sorad":
-            root = ProcessL1aSoRad.processL1a(inFilePath, calibrationMap)
+            root, outFFPs = ProcessL1aSoRad.processL1a(inFilePath, outFilePath, calibrationMap)
         elif ConfigFile.settings["SensorType"].lower() == "dalec":
             root = ProcessL1aDALEC.processL1a(inFilePath, calibrationMap)
             outFFPs = outFilePath
@@ -323,15 +321,13 @@ class Controller:
                 msg = '**********************Unable to write L1A file. It may be open in another program.**********************'
                 if MainConfig.settings["popQuery"] == 0 and os.getenv('HYPERINSPACE_CMD') != 'TRUE':
                     Utilities.errorWindow("File Error", msg)
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(msg)
                 return None, None
         else:
             msg = "L1a processing failed. Nothing to output."
             if MainConfig.settings["popQuery"] == 0 and os.getenv('HYPERINSPACE_CMD') != 'TRUE':
                 Utilities.errorWindow("File Error", msg)
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
             return None, None
 
         return root, outFFPs
@@ -350,8 +346,8 @@ class Controller:
         except Exception:
             msg = "Unable to open file. May be open in another application."
             Utilities.errorWindow("File Error", msg)
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
+
             return None
 
         # At this stage the Anomanal parameterizations are current in ConfigFile.settings,
@@ -366,15 +362,13 @@ class Controller:
                 msg = "Controller.processL1aqc: Unable to open HDF file. May be open in another application."
                 if MainConfig.settings["popQuery"] == 0 and os.getenv('HYPERINSPACE_CMD') != 'TRUE':
                     Utilities.errorWindow("File Error", msg)
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(msg)
                 return None
         else:
             msg = "L1aqc processing failed. Nothing to output."
             if MainConfig.settings["popQuery"] == 0 and os.getenv('HYPERINSPACE_CMD') != 'TRUE':
                 Utilities.errorWindow("File Error", msg)
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
             return None
 
         return root
@@ -387,19 +381,17 @@ class Controller:
             return None
 
         # Process the data
-        msg = "ProcessL1b: " + inFilePath
-        print(msg)
-        Utilities.writeLogFile(msg)
+        Utilities.writeLogFileAndPrint(f"ProcessL1b: {inFilePath}")
         try:
             root = HDFRoot.readHDF5(inFilePath)
         except Exception:
             msg = "Controller.processL1b: Unable to open HDF file. May be open in another application."
             Utilities.errorWindow("File Error", msg)
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
             return None
 
-        if ConfigFile.settings["SensorType"].lower() == "trios":
+        if ConfigFile.settings["SensorType"].lower() == "trios" or  ConfigFile.settings["SensorType"].lower() == "sorad":
+            # root = TriosL1B.processL1b(root, outFilePath)
             root = ProcessL1bTriOS.processL1b(root, outFilePath)
         elif ConfigFile.settings["SensorType"].lower() == "dalec":
             # root = TriosL1B.processL1b(root, outFilePath)
@@ -414,15 +406,13 @@ class Controller:
             except Exception:
                 msg = "**********************Controller.ProcessL1b: Unable to write file. May be open in another application.**********************"
                 Utilities.errorWindow("File Error", msg)
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(msg)
                 return None
         else:
             msg = "L1b processing failed. Nothing to output."
             if MainConfig.settings["popQuery"] == 0 and os.getenv('HYPERINSPACE_CMD') != 'TRUE':
                 Utilities.errorWindow("File Error", msg)
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
             return None
 
         return root
@@ -442,8 +432,7 @@ class Controller:
         except Exception:
             msg = "Unable to open file. May be open in another application."
             Utilities.errorWindow("File Error", msg)
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
             return None
 
         root.attributes['In_Filepath'] = inFilePath
@@ -456,15 +445,13 @@ class Controller:
             except Exception:
                 msg = "**********************Unable to write file. May be open in another application.**********************"
                 Utilities.errorWindow("File Error", msg)
-                print(msg)
-                Utilities.writeLogFile(msg)
-                return None,
+                Utilities.writeLogFileAndPrint(msg)
+                return None
         else:
             msg = "L1bqc processing failed. Nothing to output."
             if MainConfig.settings["popQuery"] == 0 and os.getenv('HYPERINSPACE_CMD') != 'TRUE':
                 Utilities.errorWindow("File Error", msg)
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
             return None
 
         return root
@@ -478,9 +465,10 @@ class Controller:
         _, filename = os.path.split(outFilePath)
         if node is not None:
 
-            #if ConfigFile.settings['SensorType'].lower() == 'trios' and ConfigFile.settings['bL1bCal'] == 1:
+            #if (ConfigFile.settings['SensorType'].lower() == 'trios' or ConfigFile.settings['SensorType'].lower() == 'sorad') and ConfigFile.settings['fL1bCal'] == 1:
             if  (ConfigFile.settings['SensorType'].lower() == 'trios' or \
-                 ConfigFile.settings['SensorType'].lower() == 'dalec') and ConfigFile.settings['bL1bCal'] == 1:
+                 ConfigFile.settings['SensorType'].lower() == 'dalec' or \
+                 ConfigFile.settings['SensorType'].lower() == 'sorad') and ConfigFile.settings['fL1bCal'] == 1:
                 plotDeltaBool = False
             else:
                 plotDeltaBool = True
@@ -522,15 +510,13 @@ class Controller:
             except Exception:
                 msg = "**********************Unable to write file. May be open in another application.**********************"
                 Utilities.errorWindow("File Error", msg)
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(msg)
                 return None
         else:
             msg = "L2 processing failed. Nothing to output."
             if MainConfig.settings["popQuery"] == 0 and os.getenv('HYPERINSPACE_CMD') != 'TRUE':
                 Utilities.errorWindow("File Error", msg)
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
             return None
 
     # Process every file in a list of files 1 level
@@ -544,9 +530,7 @@ class Controller:
         if os.path.isdir(pathOut):
             pathOutLevel = os.path.join(pathOut, level)
         else:
-            msg = "Bad output destination. Select new Output Data Directory."
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint("Bad output destination. Select new Output Data Directory.")
             return False
 
         # Add output level directory if necessary
@@ -576,16 +560,12 @@ class Controller:
             os.environ["LOGFILE"] = f'Stations_{fileName}_{level}.log'
         else:
             os.environ["LOGFILE"] = fileName + '_' + level + '.log'
-        msg = "Process Single Level"
-        print(msg)
-        Utilities.writeLogFile(msg,mode='w') # <<---- Logging initiated here
+        Utilities.writeLogFileAndPrint("Process Single Level",mode='w')# <<---- Logging initiated here
 
         testExts = ['.raw','.mlb','.hdf','.txt']
 
         if extension.lower() not in testExts:
-            msg = "Unrecognized file type. Aborting."
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint("Unrecognized file type. Aborting.")
             return False#, None
 
         # If this is an HDF, assume it is not RAW, drop the level from fileName
@@ -623,9 +603,7 @@ class Controller:
                     anomAnalFileName = anomAnalFileName + '_anoms.csv'
                     fp = os.path.join(PATH_TO_CONFIG, anomAnalFileName)
                     if os.path.exists(fp):
-                        msg = f"Deglitching file {fp} found for {ConfigFile.filename.split('.', maxsplit=1)[0]}. Using these parameters."
-                        print(msg)
-                        Utilities.writeLogFile(msg)
+                        Utilities.writeLogFileAndPrint(f"Deglitching file {fp} found for {ConfigFile.filename.split('.', maxsplit=1)[0]}. Using these parameters.")
                         params = Utilities.readAnomAnalFile(fp)
                         # If a parameterization has been saved in the AnomAnalFile, set the properties in the local object
                         # for all sensors
@@ -646,18 +624,12 @@ class Controller:
                                 ConfigFile.settings[f'fL1aqc{sensor}MinMaxBandLight'] = params[l1aqcfileName][ref+9]
                                 ref += 10
                         else:
-                            msg = f'{l1aqcfileName} not found in parameter file {anomAnalFileName}. Resort to values in ConfigFile.settings.'
-                            print(msg)
-                            Utilities.writeLogFile(msg)
+                            Utilities.writeLogFileAndPrint(f'{l1aqcfileName} not found in parameter file {anomAnalFileName}. Resort to values in ConfigFile.settings.')
                     else:
-                        msg = 'No deglitching parameter file found. Resorting to default values. NOT RECOMMENDED. RUN ANOMALY ANALYSIS.'
-                        print(msg)
-                        Utilities.writeLogFile(msg)
+                        Utilities.writeLogFileAndPrint('No deglitching parameter file found. Resorting to default values. NOT RECOMMENDED. RUN ANOMALY ANALYSIS.')
                 else:
-                    msg = 'No deglitching will be performed.'
-                    print(msg)
-                    Utilities.writeLogFile(msg)
-                root = Controller.processL1aqc(inFilePath, outFilePath, calibrationMap, ancillaryData)                
+                    Utilities.writeLogFileAndPrint('No deglitching will be performed.')
+                root = Controller.processL1aqc(inFilePath, outFilePath, calibrationMap, ancillaryData)
                 Utilities.checkOutputFiles(outFilePath)
 
             elif level == "L1B":
@@ -677,9 +649,7 @@ class Controller:
                 print('No such input file: ' + inFilePath)
                 return False#None, outFilePath
 
-            msg = "ProcessL2: " + inFilePath
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint("ProcessL2: " + inFilePath)
             try:
                 # root variable is replaced by L2 node unless station extraction, in which case
                 #   it is retained and node is returned from ProcessL2
@@ -689,40 +659,28 @@ class Controller:
             except Exception:
                 msg = "Unable to open file. May be open in another application."
                 Utilities.errorWindow("File Error", msg)
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(msg)
                 return False#None, outFilePath
 
             # Check for new 6S model group
             test = root.getGroup('SIXS_MODEL')
             if test is None:
-                msg = "6S model not found, probably because lower level data was processed before v1.2.5. "
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint("6S model not found, probably because lower level data was processed before v1.2.5. ")
                 return False
 
             # Check L2 file for low-level uncertainty processing matching the uncertainty processing
             # called here (i.e., don't let Factory-Only files get processed for FRM-Class or FRM-Full)
-            if ConfigFile.settings["bL1bCal"] == 3 and 'FRM-Full' not in root.attributes['CAL_TYPE']:
-                msg = f"Low-level processing {root.attributes['CAL_TYPE']} does not match "\
-                    f"uncertainty pathway in configuration. (ConfigFile.settings['bL1bCal'] ==) {ConfigFile.settings['bL1bCal']}."
-                # Utilities.errorWindow("File Error", msg)
-                print(msg)
-                Utilities.writeLogFile(msg)
+            if ConfigFile.settings["fL1bCal"] == 3 and 'FRM-Full' not in root.attributes['CAL_TYPE']:
+                Utilities.writeLogFileAndPrint(f"Low-level processing {root.attributes['CAL_TYPE']} does not match "\
+                    f"uncertainty pathway in configuration. (ConfigFile.settings['fL1bCal'] ==) {ConfigFile.settings['fL1bCal']}.")
                 return False
-            if ConfigFile.settings["bL1bCal"] == 2 and 'FRM-Class' not in root.attributes['CAL_TYPE']:
-                msg = f"Low-level processing {root.attributes['CAL_TYPE']} does not match "\
-                    f"uncertainty pathway in configuration. (ConfigFile.settings['bL1bCal'] ==) {ConfigFile.settings['bL1bCal']}."
-                # Utilities.errorWindow("File Error", msg)
-                print(msg)
-                Utilities.writeLogFile(msg)
+            if ConfigFile.settings["fL1bCal"] == 2 and 'FRM-Class' not in root.attributes['CAL_TYPE']:
+                Utilities.writeLogFileAndPrint(f"Low-level processing {root.attributes['CAL_TYPE']} does not match "\
+                    f"uncertainty pathway in configuration. (ConfigFile.settings['fL1bCal'] ==) {ConfigFile.settings['fL1bCal']}.")
                 return False
-            if ConfigFile.settings["bL1bCal"] == 1 and 'Factory' not in root.attributes['CAL_TYPE']:
-                msg = f"Low-level processing {root.attributes['CAL_TYPE']} does not match "\
-                    f"uncertainty pathway in configuration. (ConfigFile.settings['bL1bCal'] ==) {ConfigFile.settings['bL1bCal']}."
-                # Utilities.errorWindow("File Error", msg)
-                print(msg)
-                Utilities.writeLogFile(msg)
+            if ConfigFile.settings["fL1bCal"] == 1 and 'Factory' not in root.attributes['CAL_TYPE']:
+                Utilities.writeLogFileAndPrint(f"Low-level processing {root.attributes['CAL_TYPE']} does not match "\
+                    f"uncertainty pathway in configuration. (ConfigFile.settings['fL1bCal'] ==) {ConfigFile.settings['fL1bCal']}.")
                 return False
 
 
@@ -733,7 +691,7 @@ class Controller:
                     try:
                         ancGroup.datasets[ds].datasetToColumns()
                     except Exception:
-                        print('Error: Something wrong with root ANCILLARY')
+                        Utilities.writeLogFileAndPrint('Error: Something wrong with root ANCILLARY')
                 if root.getGroup("ANCILLARY").getDataset("STATION") is not None:
                     stations = np.array(root.getGroup("ANCILLARY").getDataset("STATION").columns["STATION"])
                     stations = np.unique(stations[~np.isnan(stations)]).tolist()
@@ -752,9 +710,7 @@ class Controller:
                         filename = f'{filename}_STATION_{stationStr}.hdf'
                         outFilePathStation = os.path.join(outPath,filename)
 
-                        msg = f'Processing station: {stationStr}: \n'
-                        print(msg)
-                        Utilities.writeLogFile(msg)
+                        Utilities.writeLogFileAndPrint(f'Processing station: {stationStr}: \n')
 
                         # Cannot overwrite root here, in case there is more than one station in the file.
                         Controller.processL2(root, outFilePathStation,station)
@@ -766,18 +722,14 @@ class Controller:
                             modTime = os.path.getmtime(outFilePathStation)
                             nowTime = datetime.datetime.now()
                             if nowTime.timestamp() - modTime < 60:
-                                msg = f'{level} file produced: \n{outFilePathStation}'
-                                print(msg)
-                                Utilities.writeLogFile(msg)
+                                Utilities.writeLogFileAndPrint(f'{level} file produced: \n{outFilePathStation}')
 
                                 # Write SeaBASS
                                 if int(ConfigFile.settings["bL2SaveSeaBASS"]) == 1:
-                                    msg = f'Output SeaBASS for HDF: \n{outFilePathStation}'
-                                    print(msg)
-                                    Utilities.writeLogFile(msg)                                    
+                                    Utilities.writeLogFileAndPrint(f'Output SeaBASS for HDF: \n{outFilePathStation}')
                                     sbFileName = SeaBASSWriter.outputTXT_Type2(outFilePathStation)
 
-                                    # If this is being output to SeaBASS later, add a root attribute 
+                                    # If this is being output to SeaBASS later, add a root attribute
                                     # with the SeaBASS filename base (i.e., not rrs or es)
                                     baseName = sbFileName[0:sbFileName.find('L2')-1]
                                     # Need to reopen the station L2 to update the attribute
@@ -790,9 +742,7 @@ class Controller:
                         if ConfigFile.settings["bL2WriteReport"] == 1:
                             Controller.writeReport(fileName, pathOut, outFilePathStation, level, inFilePath)
                 else:
-                    msg = f'No stations found in: {fileName}'
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(f'No stations found in: {fileName}')
 
             else:
                 # Even where not extracting stations, processL2 returns PL2 node, not root, but to comply with expectations
@@ -806,18 +756,14 @@ class Controller:
                     modTime = os.path.getmtime(outFilePath)
                     nowTime = datetime.datetime.now()
                     if nowTime.timestamp() - modTime < 60:
-                        msg = f'{level} file produced: \n{outFilePath}'
-                        print(msg)
-                        Utilities.writeLogFile(msg)
+                        Utilities.writeLogFileAndPrint(f'{level} file produced: \n{outFilePath}')
 
                         # Write SeaBASS
                         if int(ConfigFile.settings["bL2SaveSeaBASS"]) == 1:
-                            msg = f'Output SeaBASS for HDF: \n{outFilePath}'
-                            print(msg)
-                            Utilities.writeLogFile(msg)
+                            Utilities.writeLogFileAndPrint(f'Output SeaBASS for HDF: \n{outFilePath}')
                             sbFileName = SeaBASSWriter.outputTXT_Type2(outFilePath)
 
-                            # If this is being output to SeaBASS later, add a root attribute 
+                            # If this is being output to SeaBASS later, add a root attribute
                             # with the SeaBASS filename base (i.e., not rrs or es)
                             baseName = sbFileName[0:sbFileName.find('L2')-1]
                             root.attributes['SeaBASS_File_Name_Base'] = baseName
@@ -833,10 +779,6 @@ class Controller:
         if level == "L2" and ConfigFile.settings["bL2Stations"] == 0:
             if ConfigFile.settings["bL2WriteReport"] == 1:
                 Controller.writeReport(fileName, pathOut, outFilePath, level, inFilePath)
-
-        # msg = f'Process Single Level: {outFilePath} - SUCCESSFUL'
-        # print(msg)
-        # Utilities.writeLogFile(msg)
 
         return True
 
@@ -864,7 +806,7 @@ class Controller:
 
             if L1A_complete:
                 inFileName = os.path.split(fp)[1]
-                if ConfigFile.settings["SensorType"].lower() == "trios":
+                if ConfigFile.settings["SensorType"].lower() == "trios" or ConfigFile.settings["SensorType"].lower() == "sorad":
                     # For TriOS, need to parse the L1A names, not L0
                     fileName = os.path.join('L1A',f'{os.path.splitext(inFileName)[0]}'+'.hdf')
                 else:
@@ -915,10 +857,8 @@ class Controller:
                 fileName = str.lower(os.path.split(fp)[1])
 
                 if np.sum([fileName.find(str.lower(s)) for s in srchStr] ) < 0 :
-                    msg = f'{fileName} does not match expected input level for outputing {level}'
-                    print(msg)
-                    Utilities.writeLogFile(msg)
-                    return #-1
+                    Utilities.writeLogFileAndPrint(f'{fileName} does not match expected input level for outputing {level}')
+                    return
 
             #Pass entire list L0 files
             # print("Processing: " + fp)
@@ -933,13 +873,11 @@ class Controller:
                 fileName = str.lower(os.path.split(fp)[1])
 
                 if np.sum([fileName.find(str.lower(s)) for s in srchStr] ) < 0 :
-                    msg = f'{fileName} does not match expected input level for outputing {level}'
-                    print(msg)
-                    Utilities.writeLogFile(msg)
-                    return #-1
+                    Utilities.writeLogFileAndPrint(f'{fileName} does not match expected input level for outputing {level}')
+                    return
 
                 print("Processing: " + fp)
                 # Pass singleton file
-                Controller.processSingleLevel(pathOut, fp, calibrationMap, level)                
+                Controller.processSingleLevel(pathOut, fp, calibrationMap, level)
 
                 print("processFilesSingleLevel, single file - DONE")
