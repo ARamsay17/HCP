@@ -16,11 +16,13 @@ from Source.HDFRoot import HDFRoot
 from Source.Utilities import Utilities
 from Source.ConfigFile import ConfigFile
 from Source.RhoCorrections import RhoCorrections
-from Source.Uncertainty_Analysis import Propagate
+from Source.PIU.Uncertainty_Analysis import Propagate
 from Source.Weight_RSR import Weight_RSR
 from Source.ProcessL2OCproducts import ProcessL2OCproducts
 from Source.ProcessL2BRDF import ProcessL2BRDF
-from Source.ProcessInstrumentUncertainties import Trios, HyperOCR, Dalec
+from Source.PIU.HyperOCR import HyperOCR, HyperOCRUtils
+from Source.PIU.TriOS import TriOS
+from Source.PIU.DALEC import DALEC
 
 
 class ProcessL2:
@@ -1052,7 +1054,7 @@ class ProcessL2:
 
         # rawGroup required only for some group attributes, Group data not used as is not ensemble.
         if ConfigFile.settings['SensorType'].lower() == "trios" or  ConfigFile.settings['SensorType'].lower() == "sorad":
-            instrument = Trios()  # overwrites all Instrument class functions with TriOS specific ones
+            instrument = TriOS()  # overwrites all Instrument class functions with TriOS specific ones
             stats = instrument.generateSensorStats("TriOS",
                         dict(ES=esRawGroup, LI=liRawGroup, LT=ltRawGroup),
                         dict(ES=esRawSlice, LI=liRawSlice, LT=ltRawSlice),
@@ -1071,7 +1073,7 @@ class ProcessL2:
             liRawGroup.id = "LI_L1AQC"
             ltRawGroup.id = "LT_L1AQC"
         elif ConfigFile.settings['SensorType'].lower() == "dalec":
-            instrument = Dalec()  # overwrites all Instrument class functions with Dalec specific ones
+            instrument = DALEC()  # overwrites all Instrument class functions with Dalec specific ones
             stats = instrument.generateSensorStats("Dalec",
                         dict(ES=esRawGroup, LI=liRawGroup, LT=ltRawGroup),
                         dict(ES=esRawSlice, LI=liRawSlice, LT=ltRawSlice),
@@ -1906,11 +1908,9 @@ class ProcessL2:
         # interpolate Light/Dark data for Raw groups if HyperOCR data is being processed
         if ConfigFile.settings['SensorType'].lower() == "seabird":
             # in seabird case interpolate dark data to light timer before breaking into stations
-            instrument = HyperOCR()
-            # if not any([instrument.darkToLightTimer(esRawGroup, 'ES'),
-            if not all([instrument.darkToLightTimer(esRawGroup, 'ES'),
-                        instrument.darkToLightTimer(liRawGroup, 'LI'),
-                        instrument.darkToLightTimer(ltRawGroup, 'LT')]):
+            if not all([HyperOCRUtils.darkToLightTimer(esRawGroup, 'ES'),
+                        HyperOCRUtils.darkToLightTimer(liRawGroup, 'LI'),
+                        HyperOCRUtils.darkToLightTimer(ltRawGroup, 'LT')]):
                 Utilities.writeLogFileAndPrint("failed to interpolate dark data to light data timer")
         if interval == 0:
             # Here, take the complete time series

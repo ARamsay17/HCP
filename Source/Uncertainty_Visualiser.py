@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from punpy import MCPropagation
 
-from Source.Uncertainty_Analysis import Propagate
+from Source.PIU.Uncertainty_Analysis import Propagate
 from Source.MainConfig import MainConfig
 from Source.ConfigFile import ConfigFile
 

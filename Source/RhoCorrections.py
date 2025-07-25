@@ -232,6 +232,8 @@ class RhoCorrections:
                         nwb
                     ),
                     method="pchip", # should be cubic - temporary fix due to memory issues
+                    bounds_error=False,
+                    fill_value=None,
                 )
                 print('Interpolating Z17 LUT using pchip (3rd order Hermitian Polynomial) method')
             else:
@@ -256,6 +258,8 @@ class RhoCorrections:
                         nwb
                     ),
                     method="cubic",
+                    bounds_error=False,
+                    fill_value=None,
                 )
                 print('Interpolating Z17 LUT using cubic method')
             

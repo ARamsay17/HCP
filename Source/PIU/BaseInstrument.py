@@ -44,11 +44,12 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
         # use this to switch the straylight correction method -> FOR UNCERTAINTY PROPAGATION ONLY <- between SLAPER and
         # ZONG. Not added to config file settings because this isn't intended for the end user.
         self.sl_method: str = 'ZONG'
+        warnings.filterwarnings("ignore", message="One of the provided covariance matrix is not positivedefinite. It has been slightly changed")
 
     ## Regime Agnostic Methods ##
 
     @abstractmethod
-    def lightDarkStats(self, grp: Union[HDFGroup, list], slice: list, sensortype: str) -> dict[str: np.array]:
+    def lightDarkStats(self, grp: Union[HDFGroup, dict[str: HDFGroup]], XSlice: dict, sensortype: str) -> dict[str: np.array]:
         pass
 
     def generateSensorStats(self, i_type: str, rawData: dict, rawSlice: dict, newWaveBands: np.array) -> dict[str: np.array]:
@@ -63,45 +64,49 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
         for s_type in self.sensors:
             # filter nans
             from Source.PIU.utils import utils
-            utils.apply_NaN_Mask(rawSlice[s_type]['data'])
 
             if i_type.lower() == "trios" or i_type.lower() == "sorad":
-                    stats[s_type] = self.lightDarkStats(
-                        copy.deepcopy(rawData[s_type]), copy.deepcopy(rawSlice[s_type]), s_type
-                    )  # copy.deepcopy ensures RAW data is unchanged for FRM uncertainty generation.
+                    utils.apply_NaN_Mask(rawSlice[s_type]['data'])  # apply Nan mask
+                    args = [copy.deepcopy(rawData[s_type]), copy.deepcopy(rawSlice[s_type]), s_type]  
+                    # copy.deepcopy ensures RAW data is unchanged for FRM uncertainty generation.
             elif i_type.lower() == "dalec":
-                    stats[s_type] = self.lightDarkStats(
-                        copy.deepcopy(rawData[s_type]), copy.deepcopy(rawSlice[s_type]), s_type
-                    )
+                    args = [copy.deepcopy(rawData[s_type]), copy.deepcopy(rawSlice[s_type]), s_type]    
             elif i_type.lower() == "seabird":
-                    # TODO: why no NaN mask for seabird and DALEC? - Ashley
-                    stats[s_type] = self.lightDarkStats(
-                        [rawData[s_type]['LIGHT'],
-                        rawData[s_type]['DARK']],
-                        [rawSlice[s_type]['LIGHT'],
-                        rawSlice[s_type]['DARK']],
+                    utils.apply_NaN_Mask(rawSlice[s_type]['LIGHT']['data'])  # how closely should light follow dark, i.e. do we mask light with dark and vice versa - Ashley
+                    utils.apply_NaN_Mask(rawSlice[s_type]['DARK']['data'])
+                    args =[
+                        {'LIGHT': rawData[s_type]['LIGHT'], 'DARK': rawData[s_type]['DARK']},
+                        {'LIGHT': rawSlice[s_type]['LIGHT'], 'DARK': rawSlice[s_type]['DARK']},
                         s_type
-                    )
-            if not stats[s_type]:
-                    msg = "Could not generate statistics for the ensemble"
-                    print(msg)
-                    return False
+                        ]
+            else:
+                msg = "WARNING sensor not recognised"
+                print(msg)
+                Utilities.writeLogFile(msg)
+            try:
+                stats[s_type] = self.lightDarkStats(*args)
+            except (ValueError, IndexError, KeyError):
+                msg = "Could not generate statistics for the ensemble"
+                print(msg)
+                return False
 
         # interpolate std Signal to common wavebands - taken from L2 ES group: ProcessL2.py L1352
-        for s_type in self.sensors:
-            try:
+        
+        try:
+            for s_type in self.sensors:
                 stats[s_type]['std_Signal_Interpolated'] = utils.interp_common_wvls(
                     stats[s_type]['std_Signal'],
                     np.asarray(list(stats[s_type]['std_Signal'].keys()), dtype=float),
                     newWaveBands,
                     return_as_dict=True)
-            except IndexError as err:
-                msg = f"Unable to parse statistics with for the ensemble: {err}. (possibly too few scans)."
-                print(msg)
-                Utilities.writeLogFile(msg)
-                return False
-
-        return stats
+            
+            return stats
+            
+        except IndexError as err:
+            msg = f"Unable to parse statistics with for the ensemble: {err}. (possibly too few scans)."
+            print(msg)
+            Utilities.writeLogFile(msg)
+            return False
 
     def ClassBased(self, node: HDFRoot, uncGrp: HDFGroup, stats: dict[str, np.array]) -> Union[dict[str, dict], bool]:
         """
@@ -124,12 +129,12 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
              print("Uncertainties not implemented for TriOS/DALEC/So-rad in Factory Regime")
              return False
 
-        ones = np.ones_like(UNCS.uncs['cal']['ES'])  # array of ones with correct shape.
+        ones = np.ones_like(UNCS.uncs['ES']['cal'])  # array of ones with correct shape.
 
         means = [stats['ES']['ave_Light'], stats['ES']['ave_Dark'],
                  stats['LI']['ave_Light'], stats['LI']['ave_Dark'],
                  stats['LT']['ave_Light'], stats['LT']['ave_Dark'],
-                 UNCS.coeff['cal']['ES'], UNCS.coeff['cal']['LI'], UNCS.coeff['cal']['LT'],
+                 UNCS.coeff['ES']['cal'], UNCS.coeff['LI']['cal'], UNCS.coeff['LT']['cal'],
                  ones, ones, ones,
                  ones, ones, ones,
                  ones, ones, ones,
@@ -140,16 +145,16 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
         uncertainties = [stats['ES']['std_Light'], stats['ES']['std_Dark'],
                          stats['LI']['std_Light'], stats['LI']['std_Dark'],
                          stats['LT']['std_Light'], stats['LT']['std_Dark'],
-                         UNCS.uncs['cal']['ES'] * UNCS.coeff['cal']['ES'] / 200,
-                         UNCS.uncs['cal']['LI'] * UNCS.coeff['cal']['LI'] / 200,
-                         UNCS.uncs['cal']['LT'] * UNCS.coeff['cal']['LT'] / 200,
-                         UNCS.uncs['stab']['ES'], UNCS.uncs['stab']['LI'], UNCS.uncs['stab']['LT'],
-                         UNCS.uncs['lin']['ES'], UNCS.uncs['lin']['LI'], UNCS.uncs['lin']['LT'],
-                         np.array( UNCS.uncs['stray']['ES']) / 100,
-                         np.array( UNCS.uncs['stray']['LI']) / 100,
-                         np.array( UNCS.uncs['stray']['LT']) / 100,
-                         np.array( UNCS.uncs['ct']['ES']), np.array( UNCS.uncs['ct']['LI']), np.array( UNCS.uncs['ct']['LT']),
-                         np.array( UNCS.uncs['pol']['LI']), np.array( UNCS.uncs['pol']['LT']), np.array( UNCS.uncs['cos']['ES'])
+                         UNCS.uncs['ES']['cal'] * UNCS.coeff['ES']['cal'] / 200,
+                         UNCS.uncs['LI']['cal'] * UNCS.coeff['LI']['cal'] / 200,
+                         UNCS.uncs['LT']['cal'] * UNCS.coeff['LT']['cal'] / 200,
+                         UNCS.uncs['ES']['stab'], UNCS.uncs['LI']['stab'], UNCS.uncs['LT']['stab'],
+                         UNCS.uncs['ES']['nlin'], UNCS.uncs['LI']['nlin'], UNCS.uncs['LT']['nlin'],
+                         np.array( UNCS.uncs['ES']['stray']) / 100,
+                         np.array( UNCS.uncs['LI']['stray']) / 100,
+                         np.array( UNCS.uncs['LT']['stray']) / 100,
+                         np.array( UNCS.uncs['ES']['ct']), np.array( UNCS.uncs['LI']['ct']), np.array( UNCS.uncs['LT']['ct']),
+                         np.array( UNCS.uncs['LI']['pol']), np.array( UNCS.uncs['LT']['pol']), np.array( UNCS.uncs['ES']['cos'])
                          ]
 
         # generate uncertainties using Monte Carlo Propagation object
@@ -185,19 +190,19 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
         return dict(
             esUnc=utils.interp_common_wvls(ES_unc,
                                          np.array(uncGrp.getDataset(rad_cal_str).columns[cal_col_str],
-                                                     dtype=float)[self.ind_rad_wvl['ES']],
+                                                     dtype=float)[UNCS.ind_rad_wvl['ES']],
                                          data_wvl,
                                          return_as_dict=True
                                          ),
             liUnc=utils.interp_common_wvls(LI_unc,
                                          np.array(uncGrp.getDataset(rad_cal_str).columns[cal_col_str],
-                                                  dtype=float)[self.ind_rad_wvl['LI']],
+                                                  dtype=float)[UNCS.ind_rad_wvl['LI']],
                                          data_wvl,
                                          return_as_dict=True
                                          ),
             ltUnc=utils.interp_common_wvls(LT_unc,
                                          np.array(uncGrp.getDataset(rad_cal_str).columns[cal_col_str],
-                                                  dtype=float)[self.ind_rad_wvl['LT']],
+                                                  dtype=float)[UNCS.ind_rad_wvl['LT']],
                                          data_wvl,
                                          return_as_dict=True
                                          ),
@@ -280,12 +285,12 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
         lw_uncertainties = [np.abs(np.array(list(ltXstd.values())).flatten() * lt),
                             rhoUNC,
                             np.abs(np.array(list(liXstd.values())).flatten() * li),
-                            UNCS.uncs['cal']['LI'] / 200, UNCS.uncs['cal']['LT'] / 200,
-                            UNCS.uncs['stab']['LI'], UNCS.uncs['stab']['LT'],
-                            UNCS.uncs['nlin']['LI'], UNCS.uncs['nlin']['LT'],
-                            UNCS.uncs['stray']['LI'] / 100, UNCS.uncs['stray']['LI'] / 100,
-                            UNCS.uncs['ct']['LI'], UNCS.uncs['ct']['LI'],
-                            UNCS.uncs['pol']['LI'], UNCS.uncs['pol']['LI']
+                            UNCS.uncs['LI']['cal'] / 200, UNCS.uncs['LT']['cal'] / 200,
+                            UNCS.uncs['LI']['stab'], UNCS.uncs['LT']['stab'],
+                            UNCS.uncs['LI']['nlin'], UNCS.uncs['LT']['nlin'],
+                            UNCS.uncs['LI']['stray'] / 100, UNCS.uncs['LI']['stray'] / 100,
+                            UNCS.uncs['LI']['ct'], UNCS.uncs['LI']['ct'],
+                            UNCS.uncs['LI']['pol'], UNCS.uncs['LI']['pol']
                             ]
 
         lwAbsUnc = UNC_obj_CB.Propagate_Lw_HYPER(lw_means, lw_uncertainties)
@@ -303,12 +308,12 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
                              rhoUNC,
                              np.abs(np.array(list(liXstd.values())).flatten() * li),
                              np.abs(np.array(list(esXstd.values())).flatten() * es),
-                             UNCS.uncs['cal']['ES'] / 200, UNCS.uncs['cal']['LI'] / 200, UNCS.uncs['cal']['LT'] / 200,
-                             UNCS.uncs['stab']['ES'], UNCS.uncs['stab']['LI'], UNCS.uncs['stab']['LT'],
-                             UNCS.uncs['nlin']['ES'], UNCS.uncs['nlin']['LI'], UNCS.uncs['nlin']['LT'],
-                             UNCS.uncs['stray']['ES'] / 100, UNCS.uncs['stray']['LI'] / 100, UNCS.uncs['stray']['LT'] / 100,
-                             UNCS.uncs['ct']['ES'], UNCS.uncs['ct']['LI'], UNCS.uncs['ct']['LT'],
-                             UNCS.uncs['pol']['LI'], UNCS.uncs['pol']['LT'], UNCS.uncs['cos']['ES']
+                             UNCS.uncs['ES']['cal'] / 200, UNCS.uncs['LI']['cal'] / 200, UNCS.uncs['LT']['cal'] / 200,
+                             UNCS.uncs['ES']['stab'], UNCS.uncs['LI']['stab'], UNCS.uncs['LT']['stab'],
+                             UNCS.uncs['ES']['nlin'], UNCS.uncs['LI']['nlin'], UNCS.uncs['LT']['nlin'],
+                             UNCS.uncs['ES']['stray'] / 100, UNCS.uncs['LI']['stray'] / 100, UNCS.uncs['LT']['stray'] / 100,
+                             UNCS.uncs['ES']['ct'], UNCS.uncs['LI']['ct'], UNCS.uncs['LT']['ct'],
+                             UNCS.uncs['LI']['pol'], UNCS.uncs['LT']['pol'], UNCS.uncs['ES']['cos']
                              ]
 
         rrsAbsUnc = UNC_obj_CB.Propagate_RRS_HYPER(rrs_means, rrs_uncertainties)
@@ -320,14 +325,14 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
             waveSubset,
             return_as_dict=False
         )
-        lwAbsUnc[UNCS.nan_mask] = np.nan
+        # lwAbsUnc[UNCS.nan_mask] = np.nan
         lwAbsUnc = utils.interp_common_wvls(
             lwAbsUnc,
             np.array(uncGrp.getDataset(rad_cal_str).columns[cal_col_str], dtype=float)[UNCS.ind_rad_wvl['ES']],
             waveSubset,
             return_as_dict=False
         )
-        rrsAbsUnc[UNCS.nan_mask] = np.nan
+        # rrsAbsUnc[UNCS.nan_mask] = np.nan
         rrsAbsUnc = utils.interp_common_wvls(
             rrsAbsUnc,
             np.array(uncGrp.getDataset(rad_cal_str).columns[cal_col_str], dtype=float)[UNCS.ind_rad_wvl['ES']],
