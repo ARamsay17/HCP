@@ -195,7 +195,7 @@ class Utilities:
         if flag_Trios and level == "L1A":
             for fp in inFilePath:
                 if not os.path.isfile(fp):
-                    msg = 'No such file...'
+                    msg = f'No such L1A TriOS file ... {fp}'
                     if not MainConfig.settings['popQuery']:
                         Utilities.errorWindow("File Error", msg)
                     Utilities.writeLogFileAndPrint(msg)
@@ -204,7 +204,7 @@ class Utilities:
                     return True
         else:
             if not os.path.isfile(inFilePath):
-                msg = 'No such file...'
+                msg = f'No such L1A non-TriOS file ... {inFilePath}'
                 if not MainConfig.settings['popQuery']:
                     Utilities.errorWindow("File Error", msg)
                 print(msg)
