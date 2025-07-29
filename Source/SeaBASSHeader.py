@@ -2,6 +2,7 @@ import collections
 import json
 import os
 import threading
+import time
 
 from Source import PATH_TO_CONFIG
 from Source.ConfigFile import ConfigFile
@@ -299,6 +300,8 @@ class SeaBASSHeader:
                         fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
                     except json.decoder.JSONDecodeError as err:
                         print(f'ConfigFile loadConfig: {err}')
+                        time.sleep(1)
+                        fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
                     for key, value in fullCollection.items():
                         if key in goodSettingsKeys:
                             SeaBASSHeader.settings[key] = value
