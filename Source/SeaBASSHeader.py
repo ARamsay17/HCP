@@ -292,14 +292,11 @@ class SeaBASSHeader:
         seaBASSHeaderPath = os.path.join(PATH_TO_CONFIG, filename)
         if os.path.isfile(seaBASSHeaderPath):
             SeaBASSHeader.filename = filename
-            text = ""
             lock = threading.Lock()
             with lock:
                 with open(seaBASSHeaderPath, 'r', encoding="utf-8") as f:
-                    text = f.read()
-                    # SeaBASSHeader.settings = json.loads(text, object_pairs_hook=collections.OrderedDict)
                     try:
-                        fullCollection = json.loads(text, object_pairs_hook=collections.OrderedDict)
+                        fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
                     except json.decoder.JSONDecodeError as err:
                         print(f'ConfigFile loadConfig: {err}')
                     for key, value in fullCollection.items():

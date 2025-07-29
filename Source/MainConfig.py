@@ -3,6 +3,7 @@ import os
 import collections
 import json
 # import time
+import threading
 
 from Source import PATH_TO_CONFIG
 # from Source.ConfigFile import ConfigFile
@@ -34,13 +35,13 @@ class MainConfig:
 
         configPath = os.path.join(PATH_TO_CONFIG, fileName)
         if os.path.isfile(configPath):
-            text = ""
-            with open(configPath, 'r', encoding="utf-8") as f:
-                text = f.read()
-                fullCollection = json.loads(text, object_pairs_hook=collections.OrderedDict)
+            lock = threading.Lock()
+            with lock:
+                with open(configPath, 'r', encoding="utf-8") as f:
+                    fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
 
-                for key, value in fullCollection.items():
-                    MainConfig.settings[key] = value
+                    for key, value in fullCollection.items():
+                        MainConfig.settings[key] = value
         # else:
         #     MainConfig.createDefaultConfig(fileName, version)
 
