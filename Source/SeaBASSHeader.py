@@ -168,7 +168,7 @@ class SeaBASSHeader:
         else:
             ltFilt = "Off"
 
-        if ConfigFile.settings["bL2ZhangRho"]:
+        if ConfigFile.settings["bL2Z17Rho"]:
             # rhoCorr = 'Zhang et al. 2017'
             SeaBASSHeader.settings["rho_correction"] = 'Z17'
         else:

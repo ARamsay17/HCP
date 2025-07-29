@@ -559,7 +559,7 @@ class SeaBASSHeaderWindow(QtWidgets.QDialog):
             ltFilt = "Off"
         if ConfigFile.settings["bL23CRho"]:
             SeaBASSHeader.settings["rho_correction"] = '3C'
-        elif ConfigFile.settings["bL2ZhangRho"]:
+        elif ConfigFile.settings["bL2Z17Rho"]:
             SeaBASSHeader.settings["rho_correction"] = 'Z17'
         else:
             SeaBASSHeader.settings["rho_correction"] = 'M99'

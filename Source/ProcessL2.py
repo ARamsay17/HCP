@@ -254,7 +254,7 @@ class ProcessL2:
         timeTag = timeObj['timeTag']
 
         threeCRho = int(ConfigFile.settings["bL23CRho"])
-        ZhangRho = int(ConfigFile.settings["bL2ZhangRho"])
+        ZhangRho = int(ConfigFile.settings["bL2Z17Rho"])
 
         # Root (new/output) groups:
         newReflectanceGroup = node.getGroup("REFLECTANCE")
@@ -1030,7 +1030,7 @@ class ProcessL2:
 
         rhoDefault = float(ConfigFile.settings["fL2RhoSky"])
         threeCRho = int(ConfigFile.settings["bL23CRho"])
-        ZhangRho = int(ConfigFile.settings["bL2ZhangRho"])
+        ZhangRho = int(ConfigFile.settings["bL2Z17Rho"])
         enablePercentLt = float(ConfigFile.settings["bL2EnablePercentLt"])
         percentLt = float(ConfigFile.settings["fL2PercentLt"])
 
@@ -2069,9 +2069,9 @@ class ProcessL2:
         gp.attributes["nLw_UNITS"] = "uW/cm^2/nm/sr"
         if ConfigFile.settings['bL23CRho']:
             gp.attributes['GLINT_CORR'] = 'Groetsch et al. 2017'
-        if ConfigFile.settings['bL2ZhangRho']:
+        if ConfigFile.settings['bL2Z17Rho']:
             gp.attributes['GLINT_CORR'] = 'Zhang et al. 2017'
-        if ConfigFile.settings['bL2DefaultRho']:
+        if ConfigFile.settings['bL2M99Rho']:
             gp.attributes['GLINT_CORR'] = 'Mobley 1999'
         if ConfigFile.settings['bL2PerformNIRCorrection']:
             if ConfigFile.settings['bL2SimpleNIRCorrection']:

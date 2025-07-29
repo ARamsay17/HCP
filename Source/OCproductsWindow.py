@@ -1,7 +1,7 @@
+
 from PyQt5 import QtWidgets
 
 from Source.ConfigFile import ConfigFile
-
 
 class OCproductsWindow(QtWidgets.QDialog):
     def __init__(self, parent=None):
@@ -23,8 +23,8 @@ class OCproductsWindow(QtWidgets.QDialog):
         self.plotCheckBox = QtWidgets.QCheckBox("", self)
         if int(ConfigFile.products["bL2PlotProd"]) == 1:
             self.plotCheckBox.setChecked(True)
-        self.plotCheckBoxUpdate()
-        self.plotCheckBox.clicked.connect(self.plotCheckBoxUpdate)
+        # self.plotCheckBoxUpdate()
+        # self.plotCheckBox.clicked.connect(self.plotCheckBoxUpdate)
 
         biochemLabel = QtWidgets.QLabel("Empirical Algorithms")
         biochemLabel_font = biochemLabel.font()
@@ -98,12 +98,12 @@ class OCproductsWindow(QtWidgets.QDialog):
 
         qwipLabel = QtWidgets.QLabel("QWIP (Dierssen et al. 2022)", self)
         self.qwipCheckBox = QtWidgets.QCheckBox("", self)
-        try:
-            if int(ConfigFile.products["bL2Prodqwip"]) == 1:
-                self.qwipCheckBox.setChecked(True)
-        except:
-            ConfigFile.products["bL2Prodqwip"] = 0
-            self.qwipCheckBox.setChecked(False)
+        # try:
+        if int(ConfigFile.products["bL2Prodqwip"]) == 1:
+            self.qwipCheckBox.setChecked(True)
+        # except:
+        #     ConfigFile.products["bL2Prodqwip"] = 0
+        #     self.qwipCheckBox.setChecked(False)
 
         self.avwCheckBoxUpdate()
         self.avwCheckBox.clicked.connect(self.avwCheckBoxUpdate)
@@ -432,17 +432,17 @@ class OCproductsWindow(QtWidgets.QDialog):
         self.setWindowTitle('Derived L2 Geophysical and Inherent Optical Properties')
 
     ######
-    def plotCheckBoxUpdate(self):
-        print("OCproductsWindow - plotCheckBoxUpdate")
+    # def plotCheckBoxUpdate(self):
+    #     print("OCproductsWindow - plotCheckBoxUpdate")
 
-        disabled = not self.plotCheckBox.isChecked()
-        
-        if disabled:
-            self.plotCheckBox.setChecked(False)
-            ConfigFile.products["bL2PlotProd"] = 0
-        else:
-            self.plotCheckBox.setChecked(True)
-            ConfigFile.products["bL2PlotProd"] = 1
+    #     disabled = not self.plotCheckBox.isChecked()
+
+    #     if disabled:
+    #         self.plotCheckBox.setChecked(False)
+    #         ConfigFile.products["bL2PlotProd"] = 0
+    #     else:
+    #         self.plotCheckBox.setChecked(True)
+    #         ConfigFile.products["bL2PlotProd"] = 1
 
     def avwCheckBoxUpdate(self):
         print("OCproductsWindow - avwCheckBoxUpdate")
@@ -481,7 +481,7 @@ class OCproductsWindow(QtWidgets.QDialog):
     def giopCheckBoxUpdate(self):
         print("OCproductsWindow - giopCheckBoxUpdate")
 
-        disabled = (not self.giopCheckBox.isChecked())
+        disabled = not self.giopCheckBox.isChecked()
         self.aGiopLabel.setDisabled(disabled)
         self.aGiopCheckBox.setDisabled(disabled)
         self.adgGiopLabel.setDisabled(disabled)
@@ -515,7 +515,7 @@ class OCproductsWindow(QtWidgets.QDialog):
     def qaaCheckBoxUpdate(self):
         print("OCproductsWindow - qaaCheckBoxUpdate")
 
-        disabled = (not self.qaaCheckBox.isChecked())
+        disabled = not self.qaaCheckBox.isChecked()
         self.aQaaLabel.setDisabled(disabled)
         self.aQaaCheckBox.setDisabled(disabled)
         self.adgQaaLabel.setDisabled(disabled)
@@ -597,12 +597,9 @@ class OCproductsWindow(QtWidgets.QDialog):
             ConfigFile.settings["bL2WeightMODISA"] = 1
 
         ConfigFile.saveConfig(ConfigFile.filename)
-        print(f'ConfigFile.products["bL2PlotProd"] = {ConfigFile.products["bL2PlotProd"]}')
+        print(f'Departing ConfigFile.products["bL2PlotProd"] = {ConfigFile.products["bL2PlotProd"]}')
         self.close()
 
     def cancelButtonPressed(self):
         print("L2 Products - Cancel Pressed")
         self.close()
-
-
-

@@ -5,7 +5,7 @@ import os
 import shutil
 import threading
 
-from Source import PATH_TO_CONFIG, PACKAGE_DIR
+from Source import PATH_TO_CONFIG#, PACKAGE_DIR
 
 
 class ConfigFile:
@@ -148,8 +148,8 @@ class ConfigFile:
 
         ConfigFile.settings["fL2RhoSky"] = 0.0256 # Mobley 1999
         ConfigFile.settings["bL23CRho"] = 0
-        ConfigFile.settings["bL2ZhangRho"] = 0
-        ConfigFile.settings["bL2DefaultRho"] = 1
+        ConfigFile.settings["bL2Z17Rho"] = 0
+        ConfigFile.settings["bL2M99Rho"] = 1
 
         ConfigFile.settings["bL2PerformNIRCorrection"] = 1
         ConfigFile.settings["bL2SimpleNIRCorrection"] = 0 # Mobley 1999 adapted to minimum 700-800, not 750 nm
@@ -176,8 +176,7 @@ class ConfigFile:
         ConfigFile.settings["bL2PlotLt"] = 1
 
         ConfigFile.settings["bL2UncertaintyBreakdownPlot"] = 0
-
-        ConfigFile.products["bL2PlotProd"] = 1
+        ConfigFile.products["bL2PlotProd"] = 0
         ConfigFile.products["bL2Prodoc3m"] = 0
         ConfigFile.products["bL2Prodkd490"] = 0
         ConfigFile.products["bL2Prodpic"] = 0
@@ -241,6 +240,7 @@ class ConfigFile:
         with lock:
             with open(fp, 'w', encoding="utf-8") as f:
                 json.dump(params,f,indent=4)
+
         ConfigFile.createCalibrationFolder()
 
     # Loads the cfg file
@@ -258,19 +258,20 @@ class ConfigFile:
         if os.path.isfile(configPath):
             # print(f'Populating ConfigFile with saved parameters: {filename}')
             ConfigFile.filename = filename
-            text = ""
+            # text = ""
             lock = threading.Lock()
             with lock:
                 with open(configPath, 'r', encoding="utf-8") as f:
-                    text = f.read()
                     # ConfigFile.settings = json.loads(text, object_pairs_hook=collections.OrderedDict)
                     try:
-                        fullCollection = json.loads(text, object_pairs_hook=collections.OrderedDict)
+                        fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
                     except json.decoder.JSONDecodeError as err:
-                        print(f'ConfigFile loadConfig: {err}')
+                    # except UnboundLocalError as err:
+                        print(f'ERROR: ConfigFile loadConfig L271: {err} ******************************')
 
                     for key, value in fullCollection.items():
-                        if key.startswith("bL2Prod"):
+                        # NOTE: bL2PlotProd resolution here:
+                        if key.startswith("bL2Prod") or key.startswith("bL2PlotProd"):
                             if key in goodProdKeys:
                                 ConfigFile.products[key] = value
                         else:
@@ -282,7 +283,7 @@ class ConfigFile:
                                             del value[k]
                                 ConfigFile.settings[key] = value
 
-                    ConfigFile.createCalibrationFolder()
+            ConfigFile.createCalibrationFolder()
         else:
             print(f'####### Configuration {filename} not found. Using defaults. No cals.############')
 
