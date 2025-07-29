@@ -2,7 +2,7 @@
 import os
 import collections
 import json
-# import time
+import time
 import threading
 
 from Source import PATH_TO_CONFIG
@@ -38,7 +38,12 @@ class MainConfig:
             lock = threading.Lock()
             with lock:
                 with open(configPath, 'r', encoding="utf-8") as f:
-                    fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
+                    try:
+                        fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
+                    except json.decoder.JSONDecodeError as err:
+                        print(f'ConfigFile loadConfig: {err}')
+                        time.sleep(1)
+                        fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
 
                     for key, value in fullCollection.items():
                         MainConfig.settings[key] = value
