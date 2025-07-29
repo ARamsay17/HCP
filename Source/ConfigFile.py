@@ -264,7 +264,10 @@ class ConfigFile:
                 with open(configPath, 'r', encoding="utf-8") as f:
                     text = f.read()
                     # ConfigFile.settings = json.loads(text, object_pairs_hook=collections.OrderedDict)
-                    fullCollection = json.loads(text, object_pairs_hook=collections.OrderedDict)
+                    try:
+                        fullCollection = json.loads(text, object_pairs_hook=collections.OrderedDict)
+                    except json.decoder.JSONDecodeError as err:
+                        print(f'ConfigFile loadConfig: {err}')
 
                     for key, value in fullCollection.items():
                         if key.startswith("bL2Prod"):

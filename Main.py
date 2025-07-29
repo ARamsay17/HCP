@@ -27,7 +27,7 @@ from Source.SeaBASSHeader import SeaBASSHeader
 from Source.SeaBASSHeaderWindow import SeaBASSHeaderWindow
 from Source.Utilities import Utilities
 
-VERSION = "1.2.14c"
+VERSION = "1.2.15"
 
 
 class Window(QtWidgets.QWidget):
@@ -715,10 +715,9 @@ class Command:
         print("MainConfig - Config updated with cmd line arguments")
 
         calFiles = ConfigFile.settings["CalibrationFiles"]
-        
+
         ConfigFile.settings["SensorType"].lower() 
- 
- 
+
         if ConfigFile.settings["SensorType"].lower() == "trios" or ConfigFile.settings["SensorType"].lower() == "sorad":
             calibrationMap = Controller.processCalibrationConfigTrios(calFiles)
         elif ConfigFile.settings["SensorType"].lower() == "seabird":
@@ -732,7 +731,7 @@ class Command:
         else:
             print(f'CalibrationConfig is not yet ready for {ConfigFile.settings["SensorType"]}')
             sys.exit()
-    
+
         # Update the SeaBASS .hdr file in case changes were made to the configuration without using the GUI
         SeaBASSHeader.loadSeaBASSHeader(ConfigFile.settings["seaBASSHeaderFileName"])
         SeaBASSHeaderWindow.configUpdateButtonPressed(self, "config1")
