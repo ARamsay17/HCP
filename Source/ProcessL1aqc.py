@@ -292,6 +292,10 @@ class ProcessL1aqc:
                     latAnc.append(gpsLat[i])
                     lonAnc.append(gpsLon[i])
 
+        if esDateTime is None:
+            Utilities.writeLogFileAndPrint('Required Es data is missing. Check L1A and raw input files. Abort.')
+            return None
+
         # Solar geometry from GPS alone; No Tracker, no Ancillary
         relAzAnc = []
         if not ConfigFile.settings["bL1aqcSunTracker"] and not ancillaryData:
