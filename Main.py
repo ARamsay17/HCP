@@ -276,9 +276,9 @@ class Window(QtWidgets.QWidget):
         # MainConfig.saveConfig(MainConfig.fileName)
 
     def comboBox1Changed(self, value):
-        # # Save prior Config
-        # if value != MainConfig.settings['cfgFile']:
-        #     ConfigFile.saveConfig(MainConfig.settings['cfgFile'])
+        # Save prior Config
+        if value != MainConfig.settings['cfgFile']:
+            ConfigFile.saveConfig(MainConfig.settings['cfgFile'])
         MainConfig.settings["cfgFile"] = value
         index = self.configComboBox.findText(MainConfig.settings["cfgFile"])
         self.configComboBox.setCurrentIndex(index)
@@ -350,7 +350,7 @@ class Window(QtWidgets.QWidget):
         inputDir = self.inputDirectory
         configPath = os.path.join(CODE_HOME, "Config", configFileName)
         if os.path.isfile(configPath):
-            ConfigFile.loadConfig(configFileName)
+            # ConfigFile.loadConfig(configFileName)
             configDialog = ConfigWindow(configFileName, inputDir, self)
             configDialog.show()
         else:
