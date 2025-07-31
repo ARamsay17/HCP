@@ -372,15 +372,15 @@ class Propagate:
         :return: Zhang17 method rho uncertainty
         """
         # it's quite amusing how small a change is required to completely revolutionise the Zhang uncertainty code isn't it? - Ashley
-        return self.MCP.propagate_random(self.temporary_zhangWrapper, 
-                                         # RhoCorrections.read_Z17_LUT, 
+        return self.MCP.propagate_random(self.temporary_zhangWrapper,
+                                         # RhoCorrections.read_Z17_LUT,
                                          # # self.zhangWrapper,
                                          mean_vals,
                                          uncertainties,
                                          pdf_shape="truncated_gaussian",
                                          pdf_params={"min": 0},
                                          )
-    
+
     @staticmethod
     def temporary_zhangWrapper(windSpeedMean, AOD, sza, wTemp, sal, relAz, sva, waveBands):
 
@@ -390,17 +390,19 @@ class Propagate:
         if windSpeedMean > 15:
             windSpeedMean = 15
         if AOD > 0.5:
+            Utilities.writeLogFileAndPrint("Warning: AOD > 0.5. Adjusting to 0.5.")
             AOD = 0.5
         if sza > 60:
+            Utilities.writeLogFileAndPrint("Warning: SZA > 60. Adjusting to 60.")
             sza = 60
 
-        from Source.RhoCorrections import InterpolationError
+        # from Source.RhoCorrections import InterpolationError
         # try:
         #     zhang = RhoCorrections.read_Z17_LUT(windSpeedMean, AOD, sza, wTemp - 273.15, sal, relAz, sva, waveBands)
         # except InterpolationError as err:
             # Utilities.writeLogFileAndPrint(f'{err}: Unable to use LUT interpolations. Reverting to analytical solution.')
         zhang = Propagate.zhangWrapper(windSpeedMean, AOD, sza, wTemp - 273.15, sal, relAz, sva, waveBands)
-        
+
         return zhang
 
     # Measurement Functions

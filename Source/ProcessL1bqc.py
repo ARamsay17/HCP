@@ -620,26 +620,23 @@ class ProcessL1bqc:
         i=0
         start = -1
         stop = []
-        for index, _ in enumerate(SZA):
-            if SZA[index] < SZAMin or SZA[index] > SZAMax:
+        for index, sza in enumerate(SZA):
+            if sza < SZAMin or sza > SZAMax:
                 i += 1
                 if start == -1:
-                    msg =f'Low SZA. SZA: {round(SZA[index])}'
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    msg =f'Out-of-bounds SZA. SZA: {round(sza)}'
+                    Utilities.writeLogFileAndPrint(msg)
                     start = index
                 stop = index
                 if badTimes is None:
                     badTimes = []
             else:
                 if start != -1:
-                    msg = f'Passed. SZA: {round(SZA[index])}'
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    msg = f'Passed. SZA: {round(sza)}'
+                    Utilities.writeLogFileAndPrint(msg)
                     startstop = [timeStamp[start],timeStamp[stop]]
                     msg = f'   Flag data from TT2: {startstop[0]} to {startstop[1]}'
-                    # print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg,False)
                     badTimes.append(startstop)
                     start = -1
             end_index = index
