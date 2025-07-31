@@ -16,14 +16,14 @@ class ConfigFile:
     minDeglitchBand = 350
     maxDeglitchBand = 850
 
-    # Creates the calibration file folder if not exist
     @staticmethod
     def createCalibrationFolder():
+        # Creates the calibration folder if it does not exist
         os.makedirs(ConfigFile.getCalibrationDirectory(), exist_ok=True)
 
-    # Generates the default configuration
     @staticmethod
     def createDefaultConfig(fileName, new=1):
+        # Generates the default configuration
         # fileName: the filename of the configuration file without path
         print("ConfigFile - Create Default Config, or fill in newly added parameters with default values.")
 
@@ -221,15 +221,6 @@ class ConfigFile:
     # Saves the cfg file
     @staticmethod
     def saveConfig(filename):
-        # if filename =='':
-        #     # This is insane. Why is it not getting filename, even with this catch??
-        #     import time
-        #     print(f'{ConfigFile.filename}')
-        #     print('sleep')
-        #     time.sleep(8)
-        #     print(f'{ConfigFile.filename}')
-        #     filename = ConfigFile.filename
-
         print(f"ConfigFile - Save Config: {filename}")
         ConfigFile.filename = filename
         params = dict(ConfigFile.settings, **ConfigFile.products)
