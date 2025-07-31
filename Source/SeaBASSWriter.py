@@ -21,12 +21,12 @@ class SeaBASSWriter:
             station = str(headerBlock['station']).replace('.','_')
             outFileName = \
                 (   f"{os.path.split(fp)[0]}/SeaBASS/{headerBlock['experiment']}_{headerBlock['cruise']}_"
-                    f"{headerBlock['platform']}_{headerBlock['instrument_model']}_{formattedData[0].split(',')[0]}_"
+                    f"{headerBlock['platform_id']}_{headerBlock['instrument_model']}_{formattedData[0].split(',')[0]}_"
                     f"{formattedData[0].split(',')[1].replace(':','')}_L2_{dtype}_STATION_{station}_{version}.sb")
         else:
             outFileName = \
             (   f"{os.path.split(fp)[0]}/SeaBASS/{headerBlock['experiment']}_{headerBlock['cruise']}_"
-                f"{headerBlock['platform']}_{headerBlock['instrument_model']}_{formattedData[0].split(',')[0]}_"
+                f"{headerBlock['platform_id']}_{headerBlock['instrument_model']}_{formattedData[0].split(',')[0]}_"
                 f"{formattedData[0].split(',')[1].replace(':','')}_L2_{dtype}_{version}.sb")
         headerBlock['data_file_name'] = outFileName.split('/')[-1]
         return outFileName

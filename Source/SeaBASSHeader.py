@@ -21,7 +21,7 @@ class SeaBASSHeader:
         print("contact", SeaBASSHeader.settings["contact"])
         print("experiment", SeaBASSHeader.settings["experiment"])
         print("cruise", SeaBASSHeader.settings["cruise"])
-        print("platform", SeaBASSHeader.settings["platform"])
+        print("platform_id", SeaBASSHeader.settings["platform_id"])
         print("station", SeaBASSHeader.settings["station"])
         print("data_file_name", SeaBASSHeader.settings["data_file_name"])
         print("original_file_name", SeaBASSHeader.settings["original_file_name"])
@@ -72,7 +72,7 @@ class SeaBASSHeader:
         SeaBASSHeader.settings["contact"] = ''
         SeaBASSHeader.settings["experiment"] = ''
         SeaBASSHeader.settings["cruise"] = name.split('.')[0] # I generally name configuration files after cruise.
-        SeaBASSHeader.settings["platform"] = ''
+        SeaBASSHeader.settings["platform_id"] = ''
 
         SeaBASSHeader.settings["documents"] = 'README.md'
 
