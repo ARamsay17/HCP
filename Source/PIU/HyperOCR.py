@@ -12,10 +12,12 @@ from collections import OrderedDict
 
 # Source files
 from Source.Utilities import Utilities
+from Source.HDFRoot import HDFRoot
 from Source.HDFGroup import HDFGroup
 
 # PIU files
 from Source.PIU.BaseInstrument import BaseInstrument
+from Source.PIU.PIUDataStore import PIUDataStore as pds
 
 
 class HyperOCR(BaseInstrument):
@@ -108,37 +110,177 @@ class HyperOCR(BaseInstrument):
             std_Signal=std_signal,
             )  # output as dictionary for use in ProcessL2/PIU
 
-    def FRM(self, node, uncGrp, raw_grps, raw_slices, stats, newWaveBands):
-        pass
+    def FRM(self, PDS: pds, stats, newWaveBands):
+        """
+        FRM regime propagation instrument uncertainties for HyperOCR, see D10 section 5.3.2 for more information.
+
+        :param PDS: PIUDataStore object containing all necessary FRM uncertanties/coefficients
+        :param stats: nested dictionaries containing the output of LightDarkStats
+        :param newWaveBands: common wavebands for interpolation of output
+        """
+
+        output_UNC = {}
+        for s_type in self.sensors:
+            print(f"FRM Processing, {s_type}")
+
+            # set up uncertainty propagation
+            import punpy
+            mDraws = 100  # number of monte carlo draws
+            prop = punpy.MCPropagation(mDraws, parallel_cores=1)
+
+            DATA = PDS.coeff[s_type]  # retrieve dictionaries for speed
+            UNC = PDS.uncs[s_type]
+
+            # generate initial samples with comet maths
+            import comet_maths as cm
+            from Source.PIU.MeasurementFunctions import MeasurementFunctions as mf
+
+            sample_cal_int = cm.generate_sample(mDraws, DATA['cal_int'], None, None)
+            sample_int_time = cm.generate_sample(mDraws, DATA['int_time'], None, None)
+            sample_n_iter =   cm.generate_sample(mDraws, DATA['n_iter'], None, None, dtype=int)
+            
+            sample_Ct =   cm.generate_sample(mDraws, DATA['Ct'], UNC['Ct'], "syst")
+            sample_LAMP = cm.generate_sample(mDraws, DATA['LAMP'], UNC['LAMP'], "syst")
+            sample_mZ =   cm.generate_sample(mDraws, DATA['mZ'], UNC['mZ'], "rand")
+
+            sample_t1 = cm.generate_sample(mDraws, DATA['t1'], None, None)
+            sample_S1 = cm.generate_sample(mDraws, np.asarray(DATA['S1']), UNC['S1'], "rand")
+            sample_S2 = cm.generate_sample(mDraws, np.asarray(DATA['S2']), UNC['S2'], "rand")
+
+            k = DATA['t1']/(DATA['t2'] - DATA['t1'])
+            sample_k = cm.generate_sample(mDraws, k, None, None)
+            sample_S12 = prop.run_samples(mf.S12func, [sample_k, sample_S1, sample_S2])
+
+            # samples for Straylight correction
+            if self.sl_method.upper() == 'ZONG':  # zong is the default straylight correction
+                sample_n_IB = self.gen_n_IB_sample(mDraws)
+                from Source.ProcessL1b_FRMCal import ProcessL1b_FRMCal
+                sample_C_zong = prop.run_samples(ProcessL1b_FRMCal.Zong_SL_correction_matrix,
+                                                 [sample_mZ, sample_n_IB])
+                sample_S12_sl_corr = prop.run_samples(mf.Zong_SL_correction, [sample_S12, sample_C_zong])
+            else:  # use slaper correction if selected - only available as a developer option currently
+                sample_S12_sl_corr = self.get_Slaper_Sl_unc(
+                    DATA['S12'], sample_S12, DATA['mZ'], sample_mZ, DATA['n_iter'], sample_n_iter, prop, mDraws
+                )
+
+            # sample for Non-Linearity
+            sample_alpha = prop.run_samples(mf.alphafunc, [sample_S1, sample_S12])
+
+            if s_type.upper() == "ES":
+                sample_updated_radcal_gain = prop.run_samples(mf.update_cal_ES, 
+                                                              [sample_S12_sl_corr, sample_LAMP, sample_cal_int, sample_t1]
+                                                              )
+                
+                # compute cosine error based on lab characterisation and cosine response asymmetry
+                sample_zen_ang = cm.generate_sample(mDraws, DATA['zenith_ang'], None, None)
+                sample_zen_avg_coserror = cm.generate_sample(mDraws, DATA['zen_avg_coserr'], UNC['zenith_ang'], "syst")
+                sample_fhemi_coserr = cm.generate_sample(mDraws, DATA['fhemi'], UNC['fhemi'], "syst")
+            else:
+                sample_PANEL = cm.generate_sample(mDraws, DATA['PANEL'], UNC['PANEL'], "syst")
+                sample_updated_radcal_gain = prop.run_samples(mf.update_cal_rad,
+                                                              [sample_S12_sl_corr, sample_LAMP, sample_PANEL,
+                                                               sample_cal_int,
+                                                               sample_t1])
+            
+            ind_nocal = DATA['ind_nocal']
+            sample_updated_radcal_gain[:, ind_nocal == True] = 1
+
+            data = np.mean(DATA['light'], axis=0)
+            data[ind_nocal is True] = 0  # 0 out data outside of cal so it doesn't affect statistics
+            dark = np.mean(DATA['dark'], axis=0)
+            dark[ind_nocal is True] = 0
+
+            # signal uncertainties
+            std_light = stats[s_type]['std_Light']  # standard deviations are taken from generateSensorStats
+            std_dark = stats[s_type]['std_Dark']
+            sample_light = cm.generate_sample(100, data, std_light, "rand")
+            sample_dark = cm.generate_sample(100, dark, std_dark, "rand")
+
+            # Dark correction
+            sample_dark_corr_data = prop.run_samples(mf.dark_Substitution, [sample_light, sample_dark])
+
+            # Non-Linearity
+            sample_nlin_corr = prop.run_samples(mf.non_linearity_corr, [sample_dark_corr_data, sample_alpha])
+
+            # Straylight
+            if self.sl_method.upper() == 'ZONG':
+                sample_sl_corr = prop.run_samples(mf.Zong_SL_correction, [sample_nlin_corr, sample_C_zong])
+            else:  # slaper
+                S12 = self.S12func(k, DATA['S1'], DATA['S2'])
+                alpha = self.alphafunc(DATA['S1'], S12)
+                nl_corr_signal = mf.non_linearity_corr(data, alpha)
+                sample_sl_corr = self.get_Slaper_Sl_unc(
+                    nl_corr_signal, sample_nlin_corr, DATA['mZ'], sample_mZ, DATA['n_iter'], sample_n_iter, prop, mDraws
+                )
+
+            # Normalise based on integration time
+            sample_normalised = prop.run_samples(mf.normalise, [sample_sl_corr, sample_cal_int, sample_int_time])
+            
+            # Apply Updated Calibration
+            sample_cal_corr = prop.run_samples(mf.absolute_calibration, [sample_normalised, sample_updated_radcal_gain])
+
+            # Stability correction
+            sample_stab = cm.generate_sample(mDraws, np.ones(len(UNC['stab'])), UNC['stab'], "syst")
+            sample_stab_corr = prop.run_samples(mf.apply_CB_corr, [sample_cal_corr, sample_stab])
+
+            # Thermal correction
+            sample_ct_corr = prop.run_samples(mf.thermal_corr, [sample_stab_corr, sample_Ct])
+
+            if s_type == "ES":
+                # Cosine correction
+                sol_zen = DATA['solar_zenith']
+                dir_rat = DATA['direct_ratio']
+                sample_sol_zen = cm.generate_sample(mDraws, sol_zen, np.asarray([0.05 for i in range(np.size(sol_zen))]), "rand")
+                sample_dir_rat = cm.generate_sample(mDraws, dir_rat, 0.08*dir_rat, "syst")
+
+                sample_cos_corr = prop.run_samples(
+                    mf.get_cos_corr, [
+                        sample_zen_ang,
+                        sample_sol_zen,
+                        sample_zen_avg_coserror
+                        ]
+                )
+                sample_cos_corr = prop.run_samples(
+                    mf.cos_corr, [sample_ct_corr, sample_dir_rat, sample_cos_corr, sample_fhemi_coserr]  # sample_cos_corr[:,ind_raw_wvl], sample_fhemi_coserr[:,ind_raw_wvl]
+                )
+
+                # Save Uncertainties
+                unc = prop.process_samples(None, sample_cos_corr)
+                sample = sample_cos_corr
+
+            else:
+                sample_pol = cm.generate_sample(mDraws, np.ones(len(UNC['pol'])), UNC['pol'], "syst")
+                sample_pol_corr = prop.run_samples(mf.apply_CB_corr, [sample_ct_corr, sample_pol])
+
+                # Save Uncertainties
+                unc = prop.process_samples(None, sample_pol_corr)
+                sample = sample_pol_corr
+
+            ind_cal = DATA['ind_cal']
+            output_UNC[f"{s_type.lower()}Unc"] = unc[ind_cal == True]  # relative uncertainty
+            output_UNC[f"{s_type.lower()}Sample"] = sample[:, ind_cal == True]  # keep samples raw
+
+            # sort the outputs ready for processing
+            # get sensor specific wavebands to be keys for uncs, then remove from output
+            wvls = DATA['wvls']
+            output_UNC[f"{s_type.lower()}Unc"] = PDS.interp_common_wvls(
+                output_UNC[f"{s_type.lower()}Unc"], 
+                wvls, 
+                newWaveBands, 
+                return_as_dict=True
+                )
+            output_UNC[f"{s_type.lower()}Sample"] = PDS.interpolateSamples(
+                output_UNC[f"{s_type.lower()}Sample"], 
+                wvls,
+                newWaveBands
+                )
+        
+        return output_UNC
 
 
 class HyperOCRUtils:
-    """
-    static method to hold utility methods specific to HyperOCR systems
-    """
     def __init__(self):
         pass
-
-    @staticmethod
-    def check_data(dark, light):
-        msg = None
-        if (dark is None) or (light is None):
-            msg = f'Dark Correction, dataset not found: {dark} , {light}'
-            print(msg)
-            Utilities.writeLogFile(msg)
-            return False
-
-        if Utilities.hasNan(light):
-            frameinfo = getframeinfo(currentframe())
-            msg = f'found NaN {frameinfo.lineno}'
-
-        if Utilities.hasNan(dark):
-            frameinfo = getframeinfo(currentframe())
-            msg = f'found NaN {frameinfo.lineno}'
-        if msg:
-            print(msg)
-            Utilities.writeLogFile(msg)
-        return True
 
     @staticmethod
     def darkToLightTimer(rawGrp, sensortype):
@@ -167,7 +309,7 @@ class HyperOCRUtils:
             rawGrp['DARK'].datasets[sensortype].data = newDarkData
             rawGrp['DARK'].datasets[sensortype].datasetToColumns()
             return True
-
+        
     @staticmethod
     def LightDarkInterp(lightData, lightTimer, darkData, darkTimer):
         # Interpolate Dark Dataset to match number of elements as Light Dataset
@@ -218,3 +360,24 @@ class HyperOCRUtils:
             return False
 
         return newDarkData
+    
+    @staticmethod
+    def check_data(dark, light):
+        msg = None
+        if (dark is None) or (light is None):
+            msg = f'Dark Correction, dataset not found: {dark} , {light}'
+            print(msg)
+            Utilities.writeLogFile(msg)
+            return False
+
+        if Utilities.hasNan(light):
+            frameinfo = getframeinfo(currentframe())
+            msg = f'found NaN {frameinfo.lineno}'
+
+        if Utilities.hasNan(dark):
+            frameinfo = getframeinfo(currentframe())
+            msg = f'found NaN {frameinfo.lineno}'
+        if msg:
+            print(msg)
+            Utilities.writeLogFile(msg)
+        return True

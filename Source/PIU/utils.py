@@ -27,7 +27,7 @@ class utils:
                         rawSlice[wl].pop(msk)  # remove the scan if nans are found anywhere
 
     @staticmethod
-    def interp_common_wvls(columns, waves, newWaveBands, return_as_dict: bool =False) -> Union[np.array, OrderedDict]:
+    def interp_common_wvls(columns, waves, newWaveBands, return_as_dict: bool=False) -> Union[np.array, OrderedDict]:
         """
         interpolate array to common wavebands
 

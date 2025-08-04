@@ -1488,12 +1488,17 @@ class ProcessL2:
                     return False
 
             elif ConfigFile.settings["fL1bCal"] == 3:
+                from Source.PIU.PIUDataStore import PIUDataStore as pds
+                # read uncs and pass to FRM method
+                PDS = pds(
+                        node,
+                        uncGroup, 
+                        dict(ES=esRawGroup, LI=liRawGroup, LT=ltRawGroup),
+                        dict(ES=esRawSlice, LI=liRawSlice, LT=ltRawSlice),
+                        )
                 xSlice.update(
-                    instrument.FRM(node, uncGroup,
-                                dict(ES=esRawGroup, LI=liRawGroup, LT=ltRawGroup),
-                                dict(ES=esRawSlice, LI=liRawSlice, LT=ltRawSlice),
-                                stats, np.array(waveSubset, float)))  # instrument_WB
-                xUNC.update(instrument.FRM_L2(rhoScalar, rhoVec, rhoUNC, waveSubset, xSlice))
+                    instrument.FRM(PDS, stats, np.array(waveSubset, float)))  # instrument_WB
+                xUNC.update(instrument.FRML2(rhoScalar, rhoVec, rhoUNC, waveSubset, xSlice))
 
                 # NOTE: Block for FRM-Full for now
                 if ConfigFile.settings['bL2UncertaintyBreakdownPlot'] and\

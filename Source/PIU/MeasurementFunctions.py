@@ -14,6 +14,10 @@ class MeasurementFunctions:
         pass
 
     @staticmethod
+    def dark_Substitution(light, dark):
+        return light - dark
+    
+    @staticmethod
     def S12func(k, S1, S2):
         "compares DN at two separate times, part of non linearity correction derrivation"
         return ((1 + k)*S1) - (k*S2)
@@ -28,13 +32,17 @@ class MeasurementFunctions:
         return np.asarray([float(t1[i]/t2[i]) if t2[i] != 0 else 0 for i in range(len(t1))])
 
     @staticmethod
-    def dark_Substitution(light, dark):
-        return light - dark
-
+    def update_cal_ES(S12_sl_corr, LAMP, cal_int, t1):
+        return (S12_sl_corr/LAMP)*(10*cal_int/t1)
+    
     @staticmethod
-    def non_linearity_corr(offset_corrected_mesure, alpha):
-        linear_corr_mesure = offset_corrected_mesure*(1 - alpha*offset_corrected_mesure)
-        return linear_corr_mesure
+    def update_cal_rad(S12_sl_corr, LAMP, PANEL, cal_int, t1):
+        return (np.pi*S12_sl_corr)/(LAMP*PANEL)*(10*cal_int/t1)
+    
+    @staticmethod
+    def non_linearity_corr(signal, alpha):
+        corrected = signal*(1 - alpha*signal)
+        return corrected
 
     @staticmethod
     def Zong_SL_correction(input_data, C_matrix):
@@ -72,12 +80,20 @@ class MeasurementFunctions:
         return mX[n_iter - 1, :]
 
     @staticmethod
-    def absolute_calibration(normalized_mesure, updated_radcal_gain):
-        return normalized_mesure/updated_radcal_gain
+    def normalise(signal, cal_int, int_time):
+        return signal*cal_int/int_time
+
+    @staticmethod
+    def absolute_calibration(signal, updated_radcal_gain):
+        return signal/updated_radcal_gain
 
     @staticmethod
     def thermal_corr(Ct, calibrated_mesure):
         return Ct*calibrated_mesure
+
+    @staticmethod
+    def apply_CB_corr(signal, corr):
+        return signal*corr
 
     @staticmethod
     def prepare_cos(uncGrp, sensortype, level=None, ind_raw_wvl=None):

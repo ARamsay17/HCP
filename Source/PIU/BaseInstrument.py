@@ -372,6 +372,7 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
 
         return UNC
 
+    @abstractmethod
     def FRM(self, node: HDFRoot, uncGrp: HDFGroup, raw_grps: dict[str, HDFGroup], raw_slices: dict[str, np.array],
             stats: dict, newWaveBands: np.array) -> dict[str, np.array]:
         """
@@ -589,3 +590,43 @@ class BaseInstrument(ABC):  # Inheriting ABC allows for more function decorators
             return Band_Convolved_UNC
         else:
             return {}
+
+    def get_Slaper_Sl_unc(self, data, sample_data, mZ, sample_mZ, n_iter, sample_n_iter, MC_prop, mDraws):
+        """
+        finds the uncertainty in the slaper correction. Error estimated from the difference between slaper correction
+        using n_iter and n_iter - 1
+
+        :param data: signal to be corrected (either S12 or signal)
+        :param sample_data: MC sample [PDF] of data attribute
+        :param mZ: LSF read from tartu files
+        :param sample mZ: PDF of mZ
+        :param n_iter: number of iterations
+        :param sample_n_iter: simple PDF of n_iter, no uncertainty should be passed here.
+        :param MC_prop: punpy.MCP object as namespace for calling punpy functions/settings
+        :param mDraws: number of monte carlo draws, M
+        """
+        # calculates difference between n=4 and n=5, then propagates as an error
+        sl_corr = self.Slaper_SL_correction(data, mZ, n_iter)
+        sl_corr_unc = []
+        sl4 = self.Slaper_SL_correction(data, mZ, n_iter=n_iter - 1)
+        for i in range(len(sl_corr)):  # get the difference between n=4 and n=5
+            if sl_corr[i] > sl4[i]:
+                sl_corr_unc.append(sl_corr[i] - sl4[i])
+            else:
+                sl_corr_unc.append(sl4[i] - sl_corr[i])
+
+        sample_sl_syst = cm.generate_sample(mDraws, sl_corr, np.array(sl_corr_unc), "syst")
+        sample_sl_rand = MC_prop.run_samples(self.Slaper_SL_correction, [sample_data, sample_mZ, sample_n_iter])
+        sample_sl_corr = MC_prop.combine_samples([sample_sl_syst, sample_sl_rand])
+
+        return sample_sl_corr
+
+    def gen_n_IB_sample(self, mDraws):
+        # make your own sample here min is 3, max is 6 - all values must be integer
+        import random as rand
+        # seed random number generator with current systime (default behaviour of rand.seed)
+        rand.seed(a=None, version=2)
+        sample_n_IB = []
+        for i in range(mDraws):
+            sample_n_IB.append(rand.randrange(3, 7, 1))  # sample_n_IB max should be 6
+        return np.asarray(sample_n_IB)  # make numpy array to be compatible with comet maths
