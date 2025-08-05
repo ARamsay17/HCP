@@ -325,9 +325,9 @@ class ProcessL2:
             newLISTDData = newRadianceGroup.getDataset(f"LI_{sensor}_sd")
             newLTSTDData = newRadianceGroup.getDataset(f"LT_{sensor}_sd")
 
-            # No average (mean or median) or standard deviation values associated with Lw or reflectances,
+            # No average (mean or median) values associated with Lw or reflectances,
             #   because these are calculated from the means of Lt, Li, Es
-      
+
             newESUNCData = newIrradianceGroup.getDataset(f"ES_{sensor}_unc")
             newLIUNCData = newRadianceGroup.getDataset(f"LI_{sensor}_unc")
             newLTUNCData = newRadianceGroup.getDataset(f"LT_{sensor}_unc")

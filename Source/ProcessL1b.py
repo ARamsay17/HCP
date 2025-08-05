@@ -153,10 +153,6 @@ class ProcessL1b:
         gp.attributes['FrameType'] = 'NONE'
 
         # Get measurement acquisition time stamp and convert to seconds to compare to cal/char files' timestamps
-        # BUG: Some are unable to read this root attribute due to OS language settings
-        # print(f"Root attribute TIME-STAMP: {root.attributes['TIME-STAMP']}")
-        # acq_time_seconds = datetime.strptime(root.attributes['TIME-STAMP'], '%a %b %d %H:%M:%S %Y').timestamp()
-        # Alternative: Grab start time of Es
         if ConfigFile.settings['SensorType'] .lower() == 'seabird':
             esDatetime = root.getGroup('ES_LIGHT').datasets['DATETIME'].data[0]
         else:
@@ -275,11 +271,12 @@ class ProcessL1b:
     def read_unc_coefficient_frm(root, classbased_dir):
         ''' SeaBird or TriOS.  ProcessL1bTriOS also redirects here. '''
         # Read Uncertainties_new_char from provided files
-        gp = root.addGroup("RAW_UNCERTAINTIES")
-        gp.attributes['FrameType'] = 'NONE'  # add FrameType = None so grp passes a quality check later        
+        # gp = root.addGroup("RAW_UNCERTAINTIES")
+        # gp.attributes['FrameType'] = 'NONE'  # add FrameType = None so grp passes a quality check later
 
         # Read sensor-specific radiometric calibration
         root = ProcessL1b.read_FidRadDB_cal_char_files(root)
+        gp = root.getGroup('RAW_UNCERTAINTIES')
 
         # temporarily use class-based polar unc for FRM
         for f in glob.glob(os.path.join(classbased_dir, r'*class_POLAR*')):
@@ -543,9 +540,7 @@ class ProcessL1b:
         7.7 User Manual SAT-DN-00228-K)
         '''
         if (darkData is None) or (lightData is None):
-            msg  = f'Dark Correction, dataset not found: {darkData} , {lightData}'
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(f'Dark Correction, dataset not found: {darkData} , {lightData}')
             return False
 
         if Utilities.hasNan(lightData):
@@ -751,7 +746,6 @@ class ProcessL1b:
             classbased_dir = os.path.join(PATH_TO_DATA, 'Class_Based_Characterizations', # Hard-coded solution for sorad
                                      'TriOS' +"_initial")
 
-
         # The radCalDir is now the same for all cal/char regimes and regardless of whether files were downloaded from FidRadDB or not
         radcal_dir = os.path.join(CODE_HOME, 'Data', 'FidRadDB',ConfigFile.settings['SensorType'])
 
@@ -807,39 +801,6 @@ class ProcessL1b:
                 gp.removeDataset('TIMETAG2_ADJUSTED')
                 gp.removeDataset('DATETIME')
                 gp = Utilities.groupAddDateTime(gp)
-
-        # # Interpolate only the Ancillary group, and then fold in model data
-        # # This is run ahead of the other groups for all processing pathways. Anc group
-        # # exists regardless of Ancillary file being provided
-        # if not ProcessL1b_Interp.interp_Anc(node, outFilePath):
-        #     Utilities.writeLogFileAndPrint('Error interpolating ancillary data')
-        #     return None
-
-        # # Need to fill in with model data here. This had previously been run on the GPS group, but now shifted to Ancillary group
-        # ancGroup = node.getGroup("ANCILLARY_METADATA")
-        # # Retrieve MERRA2 model ancillary data
-        # if ConfigFile.settings["bL1bGetAnc"] ==1:
-        #     Utilities.writeLogFileAndPrint('MERRA2 data for Wind and AOD may be used to replace blank values. Reading in model data...')
-        #     modRoot = GetAnc.getAnc(ancGroup)
-        # # Retrieve ECMWF model ancillary data
-        # elif ConfigFile.settings["bL1bGetAnc"] == 2:
-        #     Utilities.writeLogFileAndPrint('ECMWF data for Wind and AOD may be used to replace blank values. Reading in model data...')
-        #     modRoot = GetAnc_ecmwf.getAnc_ecmwf(ancGroup)
-        # else:
-        #     modRoot = None
-
-        # # Regardless of whether SunTracker is used, Ancillary data will have already been
-        # # interpolated in L1B as long as the ancillary file was read in at L1AQC. Regardless, these need
-        # # to have model data and/or default values incorporated.
-
-        # # If GMAO modeled data is selected in ConfigWindow, and an ancillary field data file
-        # # is provided in Main Window, then use the model data to fill in gaps in the field
-        # # record. Otherwise, use the selected default values from ConfigWindow
-
-        # # This step is only necessary for the ancillary datasets that REQUIRE
-        # # either field or GMAO or GUI default values. The remaining ancillary data
-        # # are culled from datasets in groups in L1B
-        # ProcessL1b.includeModelDefaults(ancGroup, modRoot)
 
         # Calibration
         # Depending on the Configuration, process either the factory

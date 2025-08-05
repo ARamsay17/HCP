@@ -2974,7 +2974,7 @@ class Utilities:
                                     ds = gp.addDataset(f"{name}_{attrs['DATA_TYPE']}_AZ{Azimuth_angle}")
                                     Azimuth_angle = None
                                 else:
-                                    Utilities.writeLogFileAndPrint(f"dataset could not be contructed, Utilties.read_char(file-path, HDFGroup) in {gp.attributes['CHARACTERISATION_FILE_TYPE']}")
+                                    Utilities.writeLogFileAndPrint(f"Dataset could not be constructed. Utilties.read_char(file-path, HDFGroup) in {gp.attributes['CHARACTERISATION_FILE_TYPE']}")
                                     raise KeyError
                             # populate ds attributes with header data
                             for k, v in attrs.items():

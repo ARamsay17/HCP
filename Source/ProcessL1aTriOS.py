@@ -31,6 +31,7 @@ class ProcessL1aTriOS:
 
                 ## Test filename for station/cast
                 # XXXXS for light, XXXXD for caps-on dark
+                # XXXXR for blocked sunlight irradiance
                 def parse_filename(fileStr):
                     ''' Test filename for datetime or station/cast light/dark '''
                     matches = []
@@ -44,7 +45,8 @@ class ProcessL1aTriOS:
                         r'\d{8}.\d{2}.\d{2}.\d{2}',
                         r'\d{4}.\d{2}.\d{2}.\d{6}',
                         r'\d{4}S', 
-                        r'\d{4}D']):
+                        r'\d{4}D',
+                        r'\d{4}R',]):
 
                         match = re.search(pattern, fileStr)
                         if match is not None:
@@ -71,6 +73,8 @@ class ProcessL1aTriOS:
                     print("  ERROR: no identifier recognized in TRIOS L0 file name" )
                     print("  L0 filename should have a cast to identify triplet instrument")
                     print("  ending in 4 digits before S.mlb (light) or D.mlb for caps-on dark. ")
+                    msg = 'PL1aTriOS raw filename not recognized'
+                    Utilities.writeLogFileAndPrint(msg)
                     return None,None
 
                 acq_name.append(a_name)
@@ -101,7 +105,7 @@ class ProcessL1aTriOS:
                 match = re.search(r"\dD$", a_name)
                 outFilePathDark = os.path.join(outFilePath+'/DARK')
                 if match is not None:
-                    print(f'Caps-on dark file recognized {a_name}.')
+                    Utilities.writeLogFileAndPrint(f'Caps-on dark file recognized {a_name}.')
                     cod = True
                     root.attributes["FRAME_TYPE"] = 'caps-on dark'
                     if os.path.isdir(outFilePathDark) is False:
@@ -113,7 +117,7 @@ class ProcessL1aTriOS:
                     if "SAM_" in file:
                         serialNumber = file[file.index('SAM_')+4:file.index('SAM_')+8]
                     else:
-                        print("ERROR : naming convention os not respected")
+                        Utilities.writeLogFileAndPrint("ERROR : naming convention is not respected")
                         serialNumber = None
 
                     start,stop = ProcessL1aTriOS.formatting_instrument(serialNumber,cal_path,file,root,configPath)
@@ -136,12 +140,10 @@ class ProcessL1aTriOS:
                     # new_name = file.split('/')[-1].split('.mlb')[0].split(f'SAM_{name}_RAW_SPECTRUM_')[1]
                     # NOTE: For caps-on darks, we require a 4-digit station number plus 'S' or 'D' for light or dark, respectively
                     # If this is a stationcast type filename, append the start time from the data:
-                    if (re.search(r'\d{4}[DS]', file.split('/')[-1]) is not None) or (a_type == 'stationcast'):
+                    if (re.search(r'\d{4}[DSR]', file.split('/')[-1]) is not None) or (a_type == 'stationcast'):
                         new_name = str(start)+'_'+new_name
                 except IndexError as err:
-                    print(err)
-                    msg = "possibly an error in naming of Raw files"
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(f"Error in naming of Raw files {err}")
                     return None, None
                     # new_name = file.split('/')[-1].split('.mlb')[0].split(f'SAM_{name}_Spectrum_RAW_')[1]
 
@@ -182,7 +184,7 @@ class ProcessL1aTriOS:
                         if gpDark.id.startswith('SAM'):
                             sensorIDS = ['ES','LI','LT']
                             for ds in gpDark.datasets:
-                                if gpDark.datasets[ds].id in sensorIDS:                 
+                                if gpDark.datasets[ds].id in sensorIDS:
                                     DN = gpDark.datasets[ds].data[:].tolist()
                                     if len(DN) < minSpectra:
                                         Utilities.writeLogFileAndPrint("Too few spectra for caps-on dark algorithm. Abort.")
@@ -197,9 +199,10 @@ class ProcessL1aTriOS:
                             print(f'Running caps-on dark algorithm to estimate internal temp:{gpDark.id}')
 
                             T = [Tc + S * np.log(dn-DNc) for dn in np.array(DN[:])]
-                            meanT = np.mean(T)
+                            # dn-DNc can result in a negative that leaves NaNs from the log...
+                            meanT = np.nanmean(T)
                             # meanT = 31 NOTE: use to force COD threshold for testing
-                            stdT = np.std(T)
+                            stdT = np.nanstd(T)
                             # Add dataset CAPSONTEMP for T and sigmaT columns. SPECTEMP reserved for internal thermistor temp (G2 and others)
                             dsT = gpDark.addDataset('CAPSONTEMP')
                             dsT.appendColumn('T',meanT)
