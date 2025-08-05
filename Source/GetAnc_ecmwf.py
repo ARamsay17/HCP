@@ -152,8 +152,8 @@ class GetAnc_ecmwf:
 
         CAMSnc = {}
 
-
-        latEff, lonEff, latLonTag, dateStrRounded, timeStrRounded = GetAnc_ecmwf.ECMWF_latLonTimeTags(lat, lon, timeStamp, latRes=latRes, lonRes=lonRes, timeResHours=timeResHours)
+        latEff, lonEff, latLonTag, dateStrRounded, timeStrRounded = \
+            GetAnc_ecmwf.ECMWF_latLonTimeTags(lat, lon, timeStamp, latRes=latRes, lonRes=lonRes, timeResHours=timeResHours)
 
         pathOut = os.path.join(pathCAMS, 'CAMS_%s_%s_%s.nc' % (latLonTag, dateStrRounded.replace('-',''), timeStrRounded.replace(':','')))
 
@@ -164,7 +164,7 @@ class GetAnc_ecmwf:
             CAMS_flag = True
         except:
             CAMS_flag = False
-            print('CAMS data missing. Skipping...')
+            Utilities.writeLogFileAndPrint('CAMS data missing. Skipping...')
 
         if CAMS_flag:
             try:
@@ -176,7 +176,14 @@ class GetAnc_ecmwf:
                     ancillary[CAMS_variable]['long_name']  = var.long_name
                     ancillary[CAMS_variable]['source']     = 'CAMS (ECMWF). https://ads.atmosphere.copernicus.eu/cdsapp#!/dataset/cams-global-atmospheric-composition-forecasts?tab=overview'
             except:
-                print('Problem processing CAMS data. Skipping...')
+                Utilities.writeLogFileAndPrint('Problem processing CAMS data. Skipping...')
+
+        # Check for recent addition of 2m temp data
+        if '2m_temperature' not in ancillary:
+            Utilities.writeLogFileAndPrint('2m_temperature data not found in CAMS. Try deleting and re-running:')
+            print('###################################################')
+            Utilities.writeLogFileAndPrint(f'{pathOut}')
+            print('###################################################')
 
         return ancillary
 
@@ -211,8 +218,6 @@ class GetAnc_ecmwf:
             modAOD.append(ancillary['total_aerosol_optical_depth_550nm']['value'])
             modAirT.append(ancillary['2m_temperature']['value'] - 273.15) # [C]
 
-
-
         modData = HDFRoot()
         modGroup = modData.addGroup('ECMWF')
         modGroup.addDataset('Datetag')
@@ -220,8 +225,8 @@ class GetAnc_ecmwf:
         modGroup.addDataset('AOD')
         modGroup.addDataset('Wind')
         modGroup.addDataset('AirTemp')
-        '''NOTE: This is an unconventional use of Dataset, i.e., overides object with .data and .column.
-            Keeping for continuity of application'''
+        # NOTE: This is an unconventional use of Dataset, i.e., overides object with .data and .column.
+        #    Keeping for continuity of application'''
         modGroup.datasets['Datetag'] = latDate
         modGroup.datasets['Timetag2'] = latTime
         modGroup.datasets['AOD'] = modAOD
