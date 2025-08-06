@@ -27,7 +27,7 @@ from Source.SeaBASSHeader import SeaBASSHeader
 from Source.SeaBASSHeaderWindow import SeaBASSHeaderWindow
 from Source.Utilities import Utilities
 
-VERSION = "1.2.14c"
+VERSION = "1.2.15"
 
 
 class Window(QtWidgets.QWidget):
@@ -279,7 +279,7 @@ class Window(QtWidgets.QWidget):
         # Save prior Config
         if value != MainConfig.settings['cfgFile']:
             ConfigFile.saveConfig(MainConfig.settings['cfgFile'])
-        MainConfig.settings["cfgFile"] = value
+            MainConfig.settings["cfgFile"] = value
         index = self.configComboBox.findText(MainConfig.settings["cfgFile"])
         self.configComboBox.setCurrentIndex(index)
         # print("MainConfig: Configuration file changed to: ", value)
@@ -289,9 +289,17 @@ class Window(QtWidgets.QWidget):
         if os.path.isfile(configPath):
             ConfigFile.loadConfig(configFileName)
             if 'inDir' in ConfigFile.settings:
+                if not os.path.isdir(ConfigFile.settings['inDir']):
+                    ConfigFile.settings['inDir'] = './Data'
                 MainConfig.settings["inDir"] = ConfigFile.settings['inDir']
+                if not os.path.isdir(ConfigFile.settings['outDir']):
+                    ConfigFile.settings['outDir'] = './Data'
                 MainConfig.settings["outDir"] = ConfigFile.settings['outDir']
+                if not os.path.isdir(ConfigFile.settings['ancFileDir']):
+                    ConfigFile.settings['ancFileDir'] = './Data'
                 MainConfig.settings["ancFileDir"] = ConfigFile.settings['ancFileDir']
+                if not os.path.isfile(ConfigFile.settings['ancFile']):
+                    ConfigFile.settings['ancFile'] = ''
                 MainConfig.settings["ancFile"] = ConfigFile.settings['ancFile']
                 self.inputDirectory = ConfigFile.settings['inDir']
                 self.outputDirectory = ConfigFile.settings['outDir']
@@ -301,7 +309,7 @@ class Window(QtWidgets.QWidget):
                 self.outDirButton.setText(MainConfig.settings["outDir"])
                 self.ancFileLineEdit.setText(
                     os.path.join(MainConfig.settings['ancFileDir'],MainConfig.settings["ancFile"]))
-        # ConfigFile.saveConfig(ConfigFile.filename)
+        # ConfigFile.saveConfig(value)
         # MainConfig.saveConfig(MainConfig.fileName)
 
     def configNewButtonPressed(self):
@@ -344,13 +352,14 @@ class Window(QtWidgets.QWidget):
         print("Edit Config Dialogue")
 
         MainConfig.saveConfig(MainConfig.fileName)
+        ConfigFile.saveConfig(ConfigFile.filename)
 
         configFileName = self.configComboBox.currentText()
 
         inputDir = self.inputDirectory
         configPath = os.path.join(CODE_HOME, "Config", configFileName)
         if os.path.isfile(configPath):
-            ConfigFile.loadConfig(configFileName)
+            # ConfigFile.loadConfig(configFileName)
             configDialog = ConfigWindow(configFileName, inputDir, self)
             configDialog.show()
         else:
@@ -540,26 +549,17 @@ class Window(QtWidgets.QWidget):
             print("Bad output directory.")
             return
 
-        # Controller.processFilesSingleLevel(
-        #     self.outputDirectory, fileNames, calibrationMap, lvl, flag_Trios
-        # )
         Controller.processFilesSingleLevel(
             self.outputDirectory, fileNames, calibrationMap, lvl)
         t1Single = time.time()
         print(f"Time elapsed: {str(round((t1Single-t0Single)/60))} minutes")
 
-    def closeEvent(self, event):
-        # reply = QtWidgets.QMessageBox.question(self, 'Window Close', 'Are you sure you want to close the window?',
-        #         QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
-
-        # if reply == QtWidgets.QMessageBox.Yes:
+    def closeEvent(self, event):        
         configFileName = self.configComboBox.currentText()
         MainConfig.settings["cfgPath"] = os.path.join(
             CODE_HOME, "Config", configFileName)
         MainConfig.saveConfig(MainConfig.fileName)
         event.accept()
-        # else:
-        #     event.ignore()
 
     def singleL1aClicked(self):
         self.processSingle("L1A")
@@ -607,7 +607,7 @@ class Window(QtWidgets.QWidget):
         print("Output Directory:", self.outputDirectory)
         if not self.outputDirectory:
             return
-       
+
         calFiles = ConfigFile.settings["CalibrationFiles"]
         # To check instrument type
         if ConfigFile.settings["SensorType"].lower() == "trios" or ConfigFile.settings["SensorType"].lower() == "sorad":
@@ -715,10 +715,9 @@ class Command:
         print("MainConfig - Config updated with cmd line arguments")
 
         calFiles = ConfigFile.settings["CalibrationFiles"]
-        
+
         ConfigFile.settings["SensorType"].lower() 
- 
- 
+
         if ConfigFile.settings["SensorType"].lower() == "trios" or ConfigFile.settings["SensorType"].lower() == "sorad":
             calibrationMap = Controller.processCalibrationConfigTrios(calFiles)
         elif ConfigFile.settings["SensorType"].lower() == "seabird":
@@ -732,7 +731,7 @@ class Command:
         else:
             print(f'CalibrationConfig is not yet ready for {ConfigFile.settings["SensorType"]}')
             sys.exit()
-    
+
         # Update the SeaBASS .hdr file in case changes were made to the configuration without using the GUI
         SeaBASSHeader.loadSeaBASSHeader(ConfigFile.settings["seaBASSHeaderFileName"])
         SeaBASSHeaderWindow.configUpdateButtonPressed(self, "config1")

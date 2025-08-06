@@ -2,10 +2,11 @@
 import os
 import collections
 import json
-# import time
+import time
+import threading
 
 from Source import PATH_TO_CONFIG
-from Source.ConfigFile import ConfigFile
+# from Source.ConfigFile import ConfigFile
 
 class MainConfig:
     '''Class to hold Main window configurations'''
@@ -15,39 +16,44 @@ class MainConfig:
     # Saves the cfg file
     @staticmethod
     def saveConfig(fileName):
-        print("MainConfig - Save Config")
+        print("MainConfig - Save MainConfig")
         # jsn = json.dumps(MainConfig.settings)
         fp = os.path.join(PATH_TO_CONFIG, fileName)
 
         with open(fp, 'w', encoding="utf-8") as f:
             json.dump(MainConfig.settings,f,indent=4)
             # f.write(jsn)
-        ConfigFile.saveConfig(ConfigFile.filename)
+        # ConfigFile.saveConfig(ConfigFile.filename)
 
     # Loads the cfg file
     @staticmethod
     def loadConfig(fileName, version):
-        print("MainConfig - Load Config")
+        print("MainConfig - Load MainConfig")
 
         # Load the default values first to insure all settings are present, then populate with saved values where possible
         MainConfig.createDefaultConfig(fileName,version)
 
         configPath = os.path.join(PATH_TO_CONFIG, fileName)
         if os.path.isfile(configPath):
-            text = ""
-            with open(configPath, 'r', encoding="utf-8") as f:
-                text = f.read()
-                fullCollection = json.loads(text, object_pairs_hook=collections.OrderedDict)
+            lock = threading.Lock()
+            with lock:
+                with open(configPath, 'r', encoding="utf-8") as f:
+                    try:
+                        fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
+                    except json.decoder.JSONDecodeError as err:
+                        print(f'ConfigFile loadConfig: {err}')
+                        time.sleep(1)
+                        fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
 
-                for key, value in fullCollection.items():
-                    MainConfig.settings[key] = value
+                    for key, value in fullCollection.items():
+                        MainConfig.settings[key] = value
         # else:
         #     MainConfig.createDefaultConfig(fileName, version)
 
     # Generates the default configuration
     @staticmethod
     def createDefaultConfig(fileName, version):
-        print("MainConfig - Refresh or create from default Config")
+        print("MainConfig - Set MainConfig settings defaults prior to populating with saved settings.")
 
         MainConfig.settings["cfgFile"] = fileName
         MainConfig.settings["cfgPath"] = os.path.join('./Config',fileName)

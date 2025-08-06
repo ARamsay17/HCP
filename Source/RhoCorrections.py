@@ -4,7 +4,8 @@ import time
 
 import numpy as np
 import xarray as xr
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
+import scipy.interpolate as spin
 
 from Source.ZhangRho import get_sky_sun_rho, PATH_TO_DATA
 from Source.ConfigFile import ConfigFile
@@ -12,7 +13,7 @@ from Source.Utilities import Utilities
 from Source.HDFRoot import HDFRoot
 
 class RhoCorrections:
-
+    ''' Object for processing glint corrections '''
     @staticmethod
     def M99Corr(windSpeedMean, SZAMean, relAzMean, Propagate = None,
                 AOD=None, cloud=None, wTemp=None, sal=None, waveBands=None):
@@ -39,11 +40,10 @@ class RhoCorrections:
         inFilePath = os.path.join(PATH_TO_DATA, 'rhoTable_AO1999.hdf')
         try:
             lut = HDFRoot.readHDF5(inFilePath)
-        except Exception:
-            msg = "Unable to open M99 LUT."
+        except Exception as err:
+            msg = f"Unable to open M99 LUT. {err}"
+            Utilities.writeLogFileAndPrint(msg)
             Utilities.errorWindow("File Error", msg)
-            print(msg)
-            Utilities.writeLogFile(msg)
 
         lutData = lut.groups[0].datasets['LUT'].data
         # convert to a 2D array
@@ -64,31 +64,35 @@ class RhoCorrections:
                  or (ConfigFile.settings['SensorType'].lower() == "dalec")):
             # Fix: Truncate input parameters to stay within Zhang ranges:
             # AOD
-            AOD = np.min([AOD,0.5])
+            if AOD > 0.5:
+                Utilities.writeLogFileAndPrint("Warning: AOD > 0.5. Adjusting to 0.5.")
+                AOD = 0.5
             # SZA
-            if SZAMean >= 70:
-                raise ValueError('SZAMean is too high (%s), Zhang correction cannot be performed above SZA=70.')
+            if SZAMean > 60:
+                Utilities.writeLogFileAndPrint("Warning: SZA > 60. Adjusting to 60.")
+                # raise ValueError('SZAMean is too high (%s), Zhang correction cannot be performed above SZA=70.')
+                SZAMean = 60
             # wavelengths in range [350-1000] nm
             newWaveBands = [w for w in waveBands if w >= 350 and w <= 1000]
             # Wavebands clips the ends off of the spectra reducing the amount of values from 200 to 189 for
             # TriOS_NOTRACKER. We need to add these specra back into rhoDelta to prevent broadcasting errors later
 
             SVA = ConfigFile.settings['fL2SVA']
-            # OLD ZHANG METHOD FOR TESTING/REFERENCE
+
             try:
+                # Z17 LUT interpolation
                 zhang = RhoCorrections.read_Z17_LUT(windSpeedMean, AOD, SZAMean, wTemp, sal, relAzMean, SVA, newWaveBands)
             except (InterpolationError, NotImplementedError) as err:
+                # Full Z17 model
                 Utilities.writeLogFileAndPrint(f'{err}: Unable to use LUT interpolations. Reverting to analytical solution.')
                 zhang, _ = RhoCorrections.ZhangCorr(windSpeedMean, AOD, cloud, SZAMean, wTemp, sal, relAzMean, SVA, newWaveBands)
 
-            # this is the method to read zhang from the LUT. It is commented out pending the sensitivity study and
-            # correction to the interpolation errors that have been noted.
             if isinstance(zhang, float):
                 raise ValueError("Interpolation of zhnag lookup table failed")
 
-            # |M99 - Z17| is an estimation of model error, added to MC M99 uncertainty in quadrature to give combined
-            # uncertainty
-            pct_diff = (np.abs(rhoScalar - zhang) / rhoScalar)  # relative units
+            # |M99 - Z17| is an estimation of model error added to MC M99 uncertainty 
+            # in quadrature to give combined uncertainty
+            pct_diff = np.abs(rhoScalar - zhang) / rhoScalar  # relative units
             tot_diff = np.sqrt(Delta ** 2 + pct_diff ** 2)
             tot_diff[np.isnan(tot_diff) is True] = 0  # ensure no NaNs are present in the uncertainties.
             tot_diff = tot_diff * rhoScalar  # ensure difference is in proper units
@@ -104,14 +108,10 @@ class RhoCorrections:
                     rhoDelta.append(np.sqrt(Delta**2 + (0.003 / rhoScalar)**2) * rhoScalar)
                     # necessary to convert to relative before propagating, then converted back to absolute
         else:
-            ## NOTES ##
-            # this is temporary. It is possible for users to not select any ancillary data in the config, meaning Zhang
-            # Rho will fail. It is far too easy for a user to do this, so I added the following line to make sure the
+            # NOTE: It is possible for users to not select any ancillary data in the config, meaning Zhang Rho 
+            # will fail. It is far too easy for a user to do this, so I added the following line to make sure the
             # processor doesn't break.
-            # Not sure I follow. Ancillary data should be populated regardless of whether an ancillary file is
-            # added (i.e., using the model data) - DAA
-            # yes but if none of the ancillary datasets i.e. ECMWF are selected then surely info like AOD could be
-            # missing? -AJR.
+            Utilities.writeLogFileAndPrint("Z17 innaccessible likely from lack of ancillary data. Fall back on rho_unc est. by Ruddick 2006")
 
             # 0.003 was chosen because it is the only number with any scientific justification
             # (estimated from Ruddick 2006).
@@ -165,7 +165,7 @@ class RhoCorrections:
         # # define uncertainties and create variable list for punpy. Inputs cannot be ordered dictionaries
         varlist = [windSpeedMean, AOD, sza, wTemp + 273.15, sal, relAz, sva, np.array(waveBands)]  # convert wtemp to kelvin
         ulist = [2.0, 0.01, 0.5, 2, 0.5, 3, 0.0, None]
-        # todo: find the source of the windspeed uncertainty to reference this. EMWCF should have this info
+        # TODO: find the source of the windspeed uncertainty to reference this. EMWCF should have this info
 
         tic = time.process_time()
         rhoVector = get_sky_sun_rho(env, sensor, round4cache=True, DB=db)['rho']
@@ -192,10 +192,7 @@ class RhoCorrections:
         windSpeedMean, AOD, SZAMean, wTemp, sal, relAzMean, newWaveBands, zhang
 
         """
-
         if sva == 30:
-            # raise not implemented error until LUT is complete for VZA 30 (should take a couple days) - Ashley
-            # raise NotImplementedError("LUT for VZA of 30 is still under development")
             db_path = "Z17_LUT_30.nc"
             Utilities.writeLogFileAndPrint("running Z17 interpolation for instrument viewing zenith of 30",False)
         else:
@@ -204,10 +201,8 @@ class RhoCorrections:
 
         try:
             LUT = xr.open_dataset(os.path.join(PATH_TO_DATA, db_path), engine='netcdf4')
-        except FileNotFoundError:
-            raise InterpolationError(f"cannot find LUT netcdf file {db_path} at {PATH_TO_DATA}")
-        
-        import scipy.interpolate as spin
+        except FileNotFoundError as err:
+            raise InterpolationError(f"cannot find LUT netcdf file {db_path} at {PATH_TO_DATA}") from err
 
         try:
             if ConfigFile.settings['SensorType'].lower() == "sorad":
@@ -258,9 +253,9 @@ class RhoCorrections:
                     method="cubic",
                 )
                 print('Interpolating Z17 LUT using cubic method')
-            
+
         except ValueError as err:
-            raise InterpolationError(f"Interpolation of Z17 LUT failed with {err}")
+            raise InterpolationError(f"Interpolation of Z17 LUT failed with {err}") from err
         else:
             return zhang_interp
 

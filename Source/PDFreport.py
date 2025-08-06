@@ -273,9 +273,9 @@ class PDF(FPDF):
                 metaData += f'Ensemble Duration: {ConfigFile.settings["fL2TimeInterval"]}\n'
                 if ConfigFile.settings['bL2EnablePercentLt']:
                     metaData += f'Percent Lt Filter: {ConfigFile.settings["fL2PercentLt"]}\n'
-                if ConfigFile.settings['bL2ZhangRho']:
+                if ConfigFile.settings['bL2Z17Rho']:
                     metaData += 'Glint_Correction: Zhang et al. 2017'
-                if ConfigFile.settings['bL2DefaultRho']:
+                if ConfigFile.settings['bL2M99Rho']:
                     metaData += 'Glint_Correction: Mobley 1999'
                 if ConfigFile.settings['bL2PerformNIRCorrection']:
                     if ConfigFile.settings['bL2SimpleNIRCorrection']:

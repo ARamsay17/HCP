@@ -36,7 +36,7 @@ class SeaBASSHeaderWindow(QtWidgets.QDialog):
         instructionLabel_font.setBold(True)
         instructionLabel.setFont(instructionLabel_font)
 
-        versionLabel = QtWidgets.QLabel("SeaBASS submission verion (e.g. 'R1', 'R2')", self)
+        versionLabel = QtWidgets.QLabel("SeaBASS revision ('R0' for preliminary, 'R1',etc.)", self)
         self.versionLineEdit = QtWidgets.QLineEdit(self)
         self.versionLineEdit.setText(str(SeaBASSHeader.settings["version"]))
 
@@ -87,10 +87,10 @@ class SeaBASSHeaderWindow(QtWidgets.QDialog):
         platformLabel.setFont(platformLabel_font)
         self.platformLineEdit = QtWidgets.QLineEdit(self)
         try:
-            self.platformLineEdit.setText(str(SeaBASSHeader.settings["platform"]))
+            self.platformLineEdit.setText(str(SeaBASSHeader.settings["platform_id"]))
         except Exception:
-            SeaBASSHeader.settings["platform"] = ''
-            self.platformLineEdit.setText(str(SeaBASSHeader.settings["platform"]))
+            SeaBASSHeader.settings["platform_id"] = ''
+            self.platformLineEdit.setText(str(SeaBASSHeader.settings["platform_id"]))
 
 
         documentsLabel = QtWidgets.QLabel("documents", self)
@@ -559,7 +559,7 @@ class SeaBASSHeaderWindow(QtWidgets.QDialog):
             ltFilt = "Off"
         if ConfigFile.settings["bL23CRho"]:
             SeaBASSHeader.settings["rho_correction"] = '3C'
-        elif ConfigFile.settings["bL2ZhangRho"]:
+        elif ConfigFile.settings["bL2Z17Rho"]:
             SeaBASSHeader.settings["rho_correction"] = 'Z17'
         else:
             SeaBASSHeader.settings["rho_correction"] = 'M99'
@@ -681,7 +681,7 @@ class SeaBASSHeaderWindow(QtWidgets.QDialog):
         SeaBASSHeader.settings["experiment"] = self.experimentLineEdit.text()
         SeaBASSHeader.settings["cruise"] = self.cruiseLineEdit.text()
         SeaBASSHeader.settings["station"] = self.stationLineEdit.text()
-        SeaBASSHeader.settings["platform"] = self.platformLineEdit.text()
+        SeaBASSHeader.settings["platform_id"] = self.platformLineEdit.text()
 
         SeaBASSHeader.settings["documents"] = self.documentsLineEdit.text()
         SeaBASSHeader.settings["calibration_files"] = self.calibration_filesLineEdit.text()
@@ -731,7 +731,7 @@ class SeaBASSHeaderWindow(QtWidgets.QDialog):
         self.experimentLineEdit.setText(str(SeaBASSHeader.settings["experiment"]))
         self.cruiseLineEdit.setText(str(SeaBASSHeader.settings["cruise"]))
         self.stationLineEdit.setText(str(SeaBASSHeader.settings["station"]))
-        self.platformLineEdit.setText(str(SeaBASSHeader.settings["platform"]))
+        self.platformLineEdit.setText(str(SeaBASSHeader.settings["platform_id"]))
         self.documentsLineEdit.setText(str(SeaBASSHeader.settings["documents"]))
         self.instrument_manufacturerLineEdit.setText(str(SeaBASSHeader.settings["instrument_manufacturer"]))
         self.instrument_modelLineEdit.setText(str(SeaBASSHeader.settings["instrument_model"]))

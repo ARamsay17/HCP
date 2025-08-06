@@ -3,8 +3,9 @@ import collections
 import json
 import os
 import shutil
+import threading
 
-from Source import PATH_TO_CONFIG, PACKAGE_DIR
+from Source import PATH_TO_CONFIG#, PACKAGE_DIR
 
 
 class ConfigFile:
@@ -15,15 +16,14 @@ class ConfigFile:
     minDeglitchBand = 350
     maxDeglitchBand = 850
 
-
-    # Creates the calibration file folder if not exist
     @staticmethod
     def createCalibrationFolder():
+        # Creates the calibration folder if it does not exist
         os.makedirs(ConfigFile.getCalibrationDirectory(), exist_ok=True)
 
-    # Generates the default configuration
     @staticmethod
     def createDefaultConfig(fileName, new=1):
+        # Generates the default configuration
         # fileName: the filename of the configuration file without path
         print("ConfigFile - Create Default Config, or fill in newly added parameters with default values.")
 
@@ -148,8 +148,8 @@ class ConfigFile:
 
         ConfigFile.settings["fL2RhoSky"] = 0.0256 # Mobley 1999
         ConfigFile.settings["bL23CRho"] = 0
-        ConfigFile.settings["bL2ZhangRho"] = 0
-        ConfigFile.settings["bL2DefaultRho"] = 1
+        ConfigFile.settings["bL2Z17Rho"] = 0
+        ConfigFile.settings["bL2M99Rho"] = 1
 
         ConfigFile.settings["bL2PerformNIRCorrection"] = 1
         ConfigFile.settings["bL2SimpleNIRCorrection"] = 0 # Mobley 1999 adapted to minimum 700-800, not 750 nm
@@ -176,8 +176,7 @@ class ConfigFile:
         ConfigFile.settings["bL2PlotLt"] = 1
 
         ConfigFile.settings["bL2UncertaintyBreakdownPlot"] = 0
-
-        ConfigFile.products["bL2PlotProd"] = 1
+        ConfigFile.products["bL2PlotProd"] = 0
         ConfigFile.products["bL2Prodoc3m"] = 0
         ConfigFile.products["bL2Prodkd490"] = 0
         ConfigFile.products["bL2Prodpic"] = 0
@@ -222,23 +221,17 @@ class ConfigFile:
     # Saves the cfg file
     @staticmethod
     def saveConfig(filename):
-        # if filename =='':
-        #     # This is insane. Why is it not getting filename, even with this catch??
-        #     import time
-        #     print(f'{ConfigFile.filename}')
-        #     print('sleep')
-        #     time.sleep(8)
-        #     print(f'{ConfigFile.filename}')
-        #     filename = ConfigFile.filename
-
         print(f"ConfigFile - Save Config: {filename}")
         ConfigFile.filename = filename
         params = dict(ConfigFile.settings, **ConfigFile.products)
         # params['calibrationPath'] = os.path.relpath(params['calibrationPath'])
         fp = os.path.join(PATH_TO_CONFIG, filename)
 
-        with open(fp, 'w', encoding="utf-8") as f:
-            json.dump(params,f,indent=4)
+        lock = threading.Lock()
+        with lock:
+            with open(fp, 'w', encoding="utf-8") as f:
+                json.dump(params,f,indent=4)
+
         ConfigFile.createCalibrationFolder()
 
     # Loads the cfg file
@@ -256,26 +249,32 @@ class ConfigFile:
         if os.path.isfile(configPath):
             # print(f'Populating ConfigFile with saved parameters: {filename}')
             ConfigFile.filename = filename
-            text = ""
-            with open(configPath, 'r', encoding="utf-8") as f:
-                text = f.read()
-                # ConfigFile.settings = json.loads(text, object_pairs_hook=collections.OrderedDict)
-                fullCollection = json.loads(text, object_pairs_hook=collections.OrderedDict)
+            # text = ""
+            lock = threading.Lock()
+            with lock:
+                with open(configPath, 'r', encoding="utf-8") as f:
+                    # ConfigFile.settings = json.loads(text, object_pairs_hook=collections.OrderedDict)
+                    try:
+                        fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
+                    except json.decoder.JSONDecodeError as err:
+                    # except UnboundLocalError as err:
+                        print(f'ERROR: ConfigFile loadConfig L271: {err} ******************************')
 
-                for key, value in fullCollection.items():
-                    if key.startswith("bL2Prod"):
-                        if key in goodProdKeys:
-                            ConfigFile.products[key] = value
-                    else:
-                        if key in goodSettingsKeys:
-                            # Clean out extraneous files (e.g., Full FRM Characterizations) from CalibrationFiles
-                            if key.startswith('CalibrationFiles'):
-                                for k in list(value.keys()):
-                                    if not any(ele.lower() in k.lower() for ele in calFormats):
-                                        del value[k]
-                            ConfigFile.settings[key] = value
+                    for key, value in fullCollection.items():
+                        # NOTE: bL2PlotProd resolution here:
+                        if key.startswith("bL2Prod") or key.startswith("bL2PlotProd"):
+                            if key in goodProdKeys:
+                                ConfigFile.products[key] = value
+                        else:
+                            if key in goodSettingsKeys:
+                                # Clean out extraneous files (e.g., Full FRM Characterizations) from CalibrationFiles
+                                if key.startswith('CalibrationFiles'):
+                                    for k in list(value.keys()):
+                                        if not any(ele.lower() in k.lower() for ele in calFormats):
+                                            del value[k]
+                                ConfigFile.settings[key] = value
 
-                ConfigFile.createCalibrationFolder()
+            ConfigFile.createCalibrationFolder()
         else:
             print(f'####### Configuration {filename} not found. Using defaults. No cals.############')
 

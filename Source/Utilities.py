@@ -195,7 +195,7 @@ class Utilities:
         if flag_Trios and level == "L1A":
             for fp in inFilePath:
                 if not os.path.isfile(fp):
-                    msg = 'No such file...'
+                    msg = f'No such L1A TriOS file ... {fp}'
                     if not MainConfig.settings['popQuery']:
                         Utilities.errorWindow("File Error", msg)
                     Utilities.writeLogFileAndPrint(msg)
@@ -204,7 +204,7 @@ class Utilities:
                     return True
         else:
             if not os.path.isfile(inFilePath):
-                msg = 'No such file...'
+                msg = f'No such L1A non-TriOS file ... {inFilePath}'
                 if not MainConfig.settings['popQuery']:
                     Utilities.errorWindow("File Error", msg)
                 print(msg)
@@ -1097,22 +1097,22 @@ class Utilities:
 
     @staticmethod
     def filterData(group, badTimes, level = None):
-        ''' Delete flagged records. Level is only specified to point to the timestamp.
+        ''' Delete L1BQC flagged records. 
+            Level is only used to flag L1AQC carry-over groups to work around timestamps and
+            embedded CALs and BACKs with TriOS.
             All data in the group (including satellite sensors) will be deleted.
-            Called by both ProcessL1bqc and ProcessL2. 
-            
-            filterData for L1AQC is contained within ProcessL1aqc.py'''
-
+            Called only by ProcessL1bqc. filterData for L1AQC is contained within ProcessL1aqc.py
+            and for L2 within ProcessL2.py.'''
         # NOTE: This is still very slow on long files with many badTimes, despite badTimes being filtered for
         #   unique pairs.
 
         Utilities.writeLogFileAndPrint(f'Remove {group.id} Data')
-        # internal switch to trigger the reset of CAL & BACK
-        # dataset that we have to delete to avoid conflict during filtering
+
+        # Trigger for reset of CAL & BACK
         do_reset = False
+
         timeStamp = None
         raw_cal, raw_back, raw_back_att, raw_cal_att = None,None,None,None,
-
         if level != 'L1AQC':
             if group.id == "ANCILLARY":
                 timeStamp = group.getDataset("LATITUDE").data["Datetime"]
@@ -1135,7 +1135,6 @@ class Utilities:
                 del group.datasets['CAL_'+group.id[0:2]]
                 del group.datasets['BACK_'+group.id[0:2]]
 
-
         startLength = len(timeStamp)
         Utilities.writeLogFileAndPrint(f'   Length of dataset prior to removal {startLength} long')
 
@@ -1148,8 +1147,6 @@ class Utilities:
             newTimeStamp = []
 
             # Utilities.writeLogFileAndPrint(f'Eliminate data between: {dateTime}'
-            # print(msg)
-            # Utilities.writeLogFile(msg)
 
             start = dateTime[0]
             stop = dateTime[1]
@@ -2977,7 +2974,7 @@ class Utilities:
                                     ds = gp.addDataset(f"{name}_{attrs['DATA_TYPE']}_AZ{Azimuth_angle}")
                                     Azimuth_angle = None
                                 else:
-                                    Utilities.writeLogFileAndPrint(f"dataset could not be contructed, Utilties.read_char(file-path, HDFGroup) in {gp.attributes['CHARACTERISATION_FILE_TYPE']}")
+                                    Utilities.writeLogFileAndPrint(f"Dataset could not be constructed. Utilties.read_char(file-path, HDFGroup) in {gp.attributes['CHARACTERISATION_FILE_TYPE']}")
                                     raise KeyError
                             # populate ds attributes with header data
                             for k, v in attrs.items():

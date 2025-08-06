@@ -1,6 +1,8 @@
 import collections
 import json
 import os
+import threading
+import time
 
 from Source import PATH_TO_CONFIG
 from Source.ConfigFile import ConfigFile
@@ -19,7 +21,7 @@ class SeaBASSHeader:
         print("contact", SeaBASSHeader.settings["contact"])
         print("experiment", SeaBASSHeader.settings["experiment"])
         print("cruise", SeaBASSHeader.settings["cruise"])
-        print("platform", SeaBASSHeader.settings["platform"])
+        print("platform_id", SeaBASSHeader.settings["platform_id"])
         print("station", SeaBASSHeader.settings["station"])
         print("data_file_name", SeaBASSHeader.settings["data_file_name"])
         print("original_file_name", SeaBASSHeader.settings["original_file_name"])
@@ -70,7 +72,7 @@ class SeaBASSHeader:
         SeaBASSHeader.settings["contact"] = ''
         SeaBASSHeader.settings["experiment"] = ''
         SeaBASSHeader.settings["cruise"] = name.split('.')[0] # I generally name configuration files after cruise.
-        SeaBASSHeader.settings["platform"] = ''
+        SeaBASSHeader.settings["platform_id"] = ''
 
         SeaBASSHeader.settings["documents"] = 'README.md'
 
@@ -167,7 +169,7 @@ class SeaBASSHeader:
         else:
             ltFilt = "Off"
 
-        if ConfigFile.settings["bL2ZhangRho"]:
+        if ConfigFile.settings["bL2Z17Rho"]:
             # rhoCorr = 'Zhang et al. 2017'
             SeaBASSHeader.settings["rho_correction"] = 'Z17'
         else:
@@ -291,15 +293,19 @@ class SeaBASSHeader:
         seaBASSHeaderPath = os.path.join(PATH_TO_CONFIG, filename)
         if os.path.isfile(seaBASSHeaderPath):
             SeaBASSHeader.filename = filename
-            text = ""
-            with open(seaBASSHeaderPath, 'r', encoding="utf-8") as f:
-                text = f.read()
-                # SeaBASSHeader.settings = json.loads(text, object_pairs_hook=collections.OrderedDict)
-                fullCollection = json.loads(text, object_pairs_hook=collections.OrderedDict)
-                for key, value in fullCollection.items():
-                    if key in goodSettingsKeys:
-                        SeaBASSHeader.settings[key] = value
-                # SeaBASSHeader.createCalibrationFolder()
+            lock = threading.Lock()
+            with lock:
+                with open(seaBASSHeaderPath, 'r', encoding="utf-8") as f:
+                    try:
+                        fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
+                    except json.decoder.JSONDecodeError as err:
+                        print(f'ConfigFile loadConfig: {err}')
+                        time.sleep(1)
+                        fullCollection = json.loads(f.read(), object_pairs_hook=collections.OrderedDict)
+                    for key, value in fullCollection.items():
+                        if key in goodSettingsKeys:
+                            SeaBASSHeader.settings[key] = value
+                    # SeaBASSHeader.createCalibrationFolder()
 
     # Deletes a seaBASSHeader
     @staticmethod

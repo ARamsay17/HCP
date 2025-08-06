@@ -63,24 +63,21 @@ class ProcessL1bqc:
             badTimes = Utilities.specFilter(inFilePath, Data, timeStamp, station, filterRange=fRange,\
                 filterFactor=ConfigFile.settings["fL1bqcSpecFilterEs"], rType='Es')
             msg = f'{len(np.unique(badTimes))/len(timeStamp)*100:.1f}% of Es data flagged'
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
         else:
             Data = group.getDataset("LI")
             timeStamp = group.getDataset("LI").data["Datetime"]
             badTimes1 = Utilities.specFilter(inFilePath, Data, timeStamp, station, filterRange=fRange,\
                 filterFactor=ConfigFile.settings["fL1bqcSpecFilterLi"], rType='Li')
             msg = f'{len(np.unique(badTimes1))/len(timeStamp)*100:.1f}% of Li data flagged'
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
 
             Data = group.getDataset("LT")
             timeStamp = group.getDataset("LT").data["Datetime"]
             badTimes2 = Utilities.specFilter(inFilePath, Data, timeStamp, station, filterRange=fRange,\
                 filterFactor=ConfigFile.settings["fL1bqcSpecFilterLt"], rType='Lt')
             msg = f'{len(np.unique(badTimes2))/len(timeStamp)*100:.1f}% of Lt data flagged'
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
 
             badTimes = np.append(badTimes1,badTimes2, axis=0)
 
@@ -101,7 +98,7 @@ class ProcessL1bqc:
         ltColumns.pop('Timetag2')
         timeStamp = ltColumns.pop('Datetime')
 
-         # If the Lt spectrum in the NIR is brighter than in the UVA, something is very wrong
+         # If the Lt spectrum in the NIR is brighter than in the UVA, something is likely wrong
         UVA = [350,400]
         NIR = [780,850]
         badTimes = None
@@ -118,12 +115,10 @@ class ProcessL1bqc:
                     ltNIR.append(ltColumns[wave][index])
 
             if np.nanmean(ltUVA) < np.nanmean(ltNIR):
-                # badTimes.append(dateTime)
-            # if wind[index] > maxWind:
                 i += 1
                 if start == -1:
                     msg =f'Bad Lt(UV) < Lt(NIR): {np.nanmean(ltUVA)}, {np.nanmean(ltNIR)}'
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg,False)
                     start = index
                 stop = index
                 if badTimes is None:
@@ -131,67 +126,32 @@ class ProcessL1bqc:
             else:
                 if start != -1:
                     msg = f'Passed. Lt(UV) >= Lt(NIR): {np.nanmean(ltUVA)}, {np.nanmean(ltNIR)}'
-                    # print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg,False)
                     startstop = [timeStamp[start],timeStamp[stop]]
                     msg = f'   Flag data from TT2: {startstop[0]} to {startstop[1]}'
-                    # print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg,False)
                     badTimes.append(startstop)
                     start = -1
             end_index = index
         msg = f'Percentage of data out of Lt limits: {round(100*i/len(timeStamp))} %'
-        print(msg)
-        Utilities.writeLogFile(msg)
+        Utilities.writeLogFileAndPrint(msg)
 
         if start != -1 and stop == end_index: # Records from a mid-point to the end are bad
             startstop = [timeStamp[start],timeStamp[stop]]
             msg = f'   Flag data from TT2: {startstop[0]} to {startstop[1]}'
-            # print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg,False)
             if badTimes is None: # only one set of records
                 badTimes = [startstop]
             else:
                 badTimes.append(startstop)
 
         if start==0 and stop==end_index: # All records are bad
-            return False
-        
+            return False, False
+
         # Restore timestamps to columns (since it's not going to filterData, where it otherwise happens)
         ltData.datasetToColumns()
 
         return badTimes, timeStamp
-
-        # badTimes = []
-        # for indx, dateTime in enumerate(ltDatetime):
-        #     # If the Lt spectrum in the NIR is brighter than in the UVA, something is very wrong
-        #     UVA = [350,400]
-        #     NIR = [780,850]
-        #     ltUVA = []
-        #     ltNIR = []
-        #     for wave in ltColumns:
-        #         if float(wave) > UVA[0] and float(wave) < UVA[1]:
-        #             ltUVA.append(ltColumns[wave][indx])
-        #         elif float(wave) > NIR[0] and float(wave) < NIR[1]:
-        #             ltNIR.append(ltColumns[wave][indx])
-
-        #     if np.nanmean(ltUVA) < np.nanmean(ltNIR):
-        #         badTimes.append(dateTime)
-
-        # badTimes = np.unique(badTimes)
-        # # Duplicate each element to a list of two elements in a list
-        # # BUG: This is not optimal as it creates one badTimes record for each bad
-        # #    timestamp, rather than span of timestamps from badtimes[i][0] to badtimes[i][1]
-        # badTimes = np.rot90(np.matlib.repmat(badTimes,2,1), 3)
-        # msg = f'{len(np.unique(badTimes))/len(ltDatetime)*100:.1f}% of spectra flagged'
-        # print(msg)
-        # Utilities.writeLogFile(msg)
-
-        # if len(badTimes) == 0:
-        #     badTimes = None
-        #     # In case filterData does not need to be run:
-        #     ltData.datasetToColumns()
-        # return badTimes
 
     @staticmethod
     def metQualityCheck(refGroup, sasGroup, sixSGroup, ancGroup):
@@ -275,8 +235,7 @@ class ProcessL1bqc:
         badTimes = np.unique(badTimes)
         badTimes = np.rot90(np.matlib.repmat(badTimes,2,1), 3) # Duplicates each element to a list of two elements in a list
         msg = f'{len(np.unique(badTimes))/len(esTime)*100:.1f}% of spectra flagged (not filtered)'
-        print(msg)
-        Utilities.writeLogFile(msg)
+        Utilities.writeLogFileAndPrint(msg)
 
         # Restore timestamps to columns (since it's not going to filterData, where it otherwise happens)
         esData.datasetToColumns()
@@ -458,9 +417,7 @@ class ProcessL1bqc:
             ancGroup.datasets['MET_FLAGS'].columns['Flag3'] = [False for i in range(lenAnc)]
             ancGroup.datasets['MET_FLAGS'].columns['Flag4'] = [False for i in range(lenAnc)]
             ancGroup.datasets['MET_FLAGS'].columns['Flag5'] = [False for i in range(lenAnc)]
-            
             ancGroup.datasets['MET_FLAGS'].columnsToDataset()
-
 
         # At this stage, all datasets in all groups of node have Timetag2
         #     and Datetag incorporated into data arrays. Calculate and add
@@ -477,8 +434,7 @@ class ProcessL1bqc:
         # Lt Quality Filtering; anomalous elevation in the NIR
         if ConfigFile.settings["bL1bqcLtUVNIR"]:
             msg = "Applying Lt(NIR)>Lt(UV) quality filtering to eliminate spectra."
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
             # This is not well optimized for large files...
             badTimes, dateTime = ProcessL1bqc.ltQuality(sasGroup)
             if badTimes is False:
@@ -493,8 +449,7 @@ class ProcessL1bqc:
                 #   I.e., if >99% of the Es spectra from this entire file were remove, abort this file
                 if check > 0.99:
                     msg = "Too few spectra remaining. Abort."
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return False
                 Utilities.filterData(sasGroup, badTimes)
                 Utilities.filterData(ancGroup, badTimes)
@@ -512,8 +467,7 @@ class ProcessL1bqc:
                     check.append(Utilities.filterData(ltLightGroup,badTimes,'L1AQC'))
                     if any(np.array(check) > 0.99):
                         msg = "Too few spectra remaining. Abort."
-                        print(msg)
-                        Utilities.writeLogFile(msg)
+                        Utilities.writeLogFileAndPrint(msg)
                         return False
                 elif ConfigFile.settings['SensorType'].lower() == 'trios' or  ConfigFile.settings['SensorType'].lower() == 'sorad':
                     Utilities.filterData(esGroup,badTimes,'L1AQC')
@@ -522,7 +476,6 @@ class ProcessL1bqc:
 
                 if sixSGroup is not None:
                     Utilities.filterData(sixSGroup,badTimes)
-
 
         # Filter low SZAs and high winds after interpolating model/ancillary data
         maxWind = float(ConfigFile.settings["fL1bqcMaxWind"])
@@ -539,7 +492,7 @@ class ProcessL1bqc:
                 i += 1
                 if start == -1:
                     msg =f'High Wind: {round(wind[index])}'
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg,False)
                     start = index
                 stop = index
                 if badTimes is None:
@@ -548,23 +501,22 @@ class ProcessL1bqc:
                 if start != -1:
                     msg = f'Passed. Wind: {round(wind[index])}'
                     print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg,False)
                     startstop = [timeStamp[start],timeStamp[stop]]
                     msg = f'   Flag data from TT2: {startstop[0]} to {startstop[1]}'
                     # print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg,False)
                     badTimes.append(startstop)
                     start = -1
             end_index = index
         msg = f'Percentage of data out of Wind limits: {round(100*i/len(timeStamp))} %'
-        print(msg)
-        Utilities.writeLogFile(msg)
+        Utilities.writeLogFileAndPrint(msg)
 
         if start != -1 and stop == end_index: # Records from a mid-point to the end are bad
             startstop = [timeStamp[start],timeStamp[stop]]
             msg = f'   Flag data from TT2: {startstop[0]} to {startstop[1]}'
             # print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg,False)
             if badTimes is None: # only one set of records
                 badTimes = [startstop]
             else:
@@ -580,8 +532,7 @@ class ProcessL1bqc:
             check = Utilities.filterData(referenceGroup, badTimes)
             if check > 0.99:
                 msg = "Too few spectra remaining. Abort."
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(msg)
                 return False
             Utilities.filterData(sasGroup, badTimes)
             Utilities.filterData(ancGroup, badTimes)
@@ -596,8 +547,7 @@ class ProcessL1bqc:
                 check.append(Utilities.filterData(ltLightGroup,badTimes,'L1AQC'))
                 if any(np.array(check) > 0.99):
                     msg = "Too few spectra remaining. Abort."
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return False
             elif ConfigFile.settings['SensorType'].lower() == 'trios' or ConfigFile.settings['SensorType'].lower() == 'sorad':
                 Utilities.filterData(esGroup,badTimes,'L1AQC')
@@ -620,38 +570,34 @@ class ProcessL1bqc:
         i=0
         start = -1
         stop = []
-        for index, _ in enumerate(SZA):
-            if SZA[index] < SZAMin or SZA[index] > SZAMax:
+        for index, sza in enumerate(SZA):
+            if sza < SZAMin or sza > SZAMax:
                 i += 1
                 if start == -1:
-                    msg =f'Low SZA. SZA: {round(SZA[index])}'
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    msg =f'Out-of-bounds SZA. SZA: {round(sza)}'
+                    Utilities.writeLogFileAndPrint(msg)
                     start = index
                 stop = index
                 if badTimes is None:
                     badTimes = []
             else:
                 if start != -1:
-                    msg = f'Passed. SZA: {round(SZA[index])}'
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    msg = f'Passed. SZA: {round(sza)}'
+                    Utilities.writeLogFileAndPrint(msg)
                     startstop = [timeStamp[start],timeStamp[stop]]
                     msg = f'   Flag data from TT2: {startstop[0]} to {startstop[1]}'
-                    # print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg,False)
                     badTimes.append(startstop)
                     start = -1
             end_index = index
         msg = f'Percentage of data out of SZA limits: {round(100*i/len(timeStamp))} %'
-        print(msg)
-        Utilities.writeLogFile(msg)
+        Utilities.writeLogFileAndPrint(msg)
 
         if start != -1 and stop == end_index: # Records from a mid-point to the end are bad
             startstop = [timeStamp[start],timeStamp[stop]]
             msg = f'   Flag data from TT2: {startstop[0]} to {startstop[1]}'
             # print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg,False)
             if badTimes is None: # only one set of records
                 badTimes = [startstop]
             else:
@@ -669,7 +615,7 @@ class ProcessL1bqc:
             if check > 0.99:
                 msg = "Too few spectra remaining. Abort."
                 print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(msg)
                 return False
             Utilities.filterData(sasGroup, badTimes)
             Utilities.filterData(ancGroup, badTimes)
@@ -684,8 +630,7 @@ class ProcessL1bqc:
                 check.append(Utilities.filterData(ltLightGroup,badTimes,'L1AQC'))
                 if any(np.array(check) > 0.99):
                     msg = "Too few spectra remaining. Abort."
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return False
             elif ConfigFile.settings['SensorType'].lower() == 'trios' or ConfigFile.settings['SensorType'].lower() == 'sorad':
                 Utilities.filterData(esGroup,badTimes,'L1AQC')
@@ -699,8 +644,7 @@ class ProcessL1bqc:
         if enableSpecQualityCheck:
             badTimes = None
             msg = "Applying spectral filtering to eliminate noisy spectra."
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
             inFilePath = node.attributes['In_Filepath']
             badTimes1,_ = ProcessL1bqc.specQualityCheck(referenceGroup, inFilePath)
             badTimes2,timeStamp = ProcessL1bqc.specQualityCheck(sasGroup, inFilePath)
@@ -717,25 +661,21 @@ class ProcessL1bqc:
                 badTimes = Utilities.uniquePairs(badTimes)
                 badTimes = Utilities.catConsecutiveBadTimes(badTimes, timeStamp.tolist())
                 msg = "Removing spectra from combined flags."
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(msg)
                 check = Utilities.filterData(referenceGroup, badTimes)
                 if check > 0.99:
                     msg = "Too few spectra remaining. Abort."
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return False
                 check = Utilities.filterData(sasGroup, badTimes)
                 if check > 0.99:
                     msg = "Too few spectra remaining. Abort."
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return False
                 check = Utilities.filterData(ancGroup, badTimes)
                 if check > 0.99:
                     msg = "Too few spectra remaining. Abort."
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return False
 
                 if sixSGroup is not None:
@@ -752,8 +692,7 @@ class ProcessL1bqc:
                     check.append(Utilities.filterData(ltLightGroup,badTimes,'L1AQC'))
                     if any(np.array(check) > 0.99):
                         msg = "Too few spectra remaining. Abort."
-                        print(msg)
-                        Utilities.writeLogFile(msg)
+                        Utilities.writeLogFileAndPrint(msg)
                         return False
                 elif ConfigFile.settings['SensorType'].lower() == 'trios' or ConfigFile.settings['SensorType'].lower() == 'sorad':
                     
@@ -766,8 +705,7 @@ class ProcessL1bqc:
         if enableMetQualityCheck:
             # msg = "Applying meteorological filtering to eliminate spectra."
             msg = "Applying meteorological flags. Met flags are NOT used to eliminate spectra."
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
             badTimes = ProcessL1bqc.metQualityCheck(referenceGroup, sasGroup, sixSGroup, ancGroup)
 
         # NOTE: This is not finalized and needs a ConfigFile.setting #########################################
@@ -793,25 +731,21 @@ class ProcessL1bqc:
                 badTimes = Utilities.uniquePairs(badTimes)
                 badTimes = Utilities.catConsecutiveBadTimes(badTimes, dateTime)
                 msg = "Removing spectra from Met flags. ######################### Hard-coded override for Flag3"
-                print(msg)
-                Utilities.writeLogFile(msg)
+                Utilities.writeLogFileAndPrint(msg)
                 check = Utilities.filterData(referenceGroup, badTimes)
                 if check > 0.99:
                     msg = "Too few spectra remaining. Abort."
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return False
                 check = Utilities.filterData(sasGroup, badTimes)
                 if check > 0.99:
                     msg = "Too few spectra remaining. Abort."
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return False
                 check = Utilities.filterData(ancGroup, badTimes)
                 if check > 0.99:
                     msg = "Too few spectra remaining. Abort."
-                    print(msg)
-                    Utilities.writeLogFile(msg)
+                    Utilities.writeLogFileAndPrint(msg)
                     return False
 
                 if sixSGroup is not None:
@@ -828,8 +762,7 @@ class ProcessL1bqc:
                     check.append(Utilities.filterData(ltLightGroup,badTimes,'L1AQC'))
                     if any(np.array(check) > 0.99):
                         msg = "Too few spectra remaining. Abort."
-                        print(msg)
-                        Utilities.writeLogFile(msg)
+                        Utilities.writeLogFileAndPrint(msg)
                         return False
                 elif ConfigFile.settings['SensorType'].lower() == 'trios' or ConfigFile.settings['SensorType'].lower() == 'sorad':
                     Utilities.filterData(esGroup,badTimes,'L1AQC')
@@ -1017,8 +950,7 @@ class ProcessL1bqc:
         # Check to insure at least some data survived quality checks
         if node.getGroup("RADIANCE").getDataset("LT").data is None:
             msg = "All data appear to have been eliminated from the file. Aborting."
-            print(msg)
-            Utilities.writeLogFile(msg)
+            Utilities.writeLogFileAndPrint(msg)
             return None
 
         # Now strip datetimes from all datasets

@@ -425,13 +425,13 @@ class ConfigWindow(QtWidgets.QDialog):
 
         self.RhoRadioButtonDefault = QtWidgets.QRadioButton("Mobley (1999) ρ")
         self.RhoRadioButtonDefault.setAutoExclusive(False)
-        if ConfigFile.settings["bL2DefaultRho"]==1:
+        if ConfigFile.settings["bL2M99Rho"]==1:
             self.RhoRadioButtonDefault.setChecked(True)
         self.RhoRadioButtonDefault.clicked.connect(self.l2RhoRadioButtonDefaultClicked)
 
         self.RhoRadioButtonZhang = QtWidgets.QRadioButton("Zhang et al. (2017) ρ")
         self.RhoRadioButtonZhang.setAutoExclusive(False)
-        if ConfigFile.settings["bL2ZhangRho"]==1:
+        if ConfigFile.settings["bL2Z17Rho"]==1:
             self.RhoRadioButtonZhang.setChecked(True)
         self.RhoRadioButtonZhang.clicked.connect(self.l2RhoRadioButtonZhangClicked)
 
@@ -460,8 +460,8 @@ class ConfigWindow(QtWidgets.QDialog):
             self.RhoRadioButtonDefault.setChecked(1)
 
             ConfigFile.settings["bL23CRho"] = 0
-            ConfigFile.settings["bL2ZhangRho"] = 0
-            ConfigFile.settings["bL2DefaultRho"] = 1
+            ConfigFile.settings["bL2Z17Rho"] = 0
+            ConfigFile.settings["bL2M99Rho"] = 1
 
         self.RhoRadoButton3C = QtWidgets.QRadioButton("Groetsch et al. (2017)")
         self.RhoRadoButton3C.setAutoExclusive(False)
@@ -1156,7 +1156,6 @@ class ConfigWindow(QtWidgets.QDialog):
                 os.remove(cal_fp)
             except IsADirectoryError:
                 print(f"cannot delete directory \"{cal_fp}\"")
-                pass
 
     def getCalibrationSettings(self):
         print("CalibrationEditWindow - getCalibrationSettings")
@@ -1411,8 +1410,8 @@ class ConfigWindow(QtWidgets.QDialog):
 
             print("ConfigWindow - l2RhoCorrection set to M99")
             ConfigFile.settings["bL23CRho"] = 0
-            ConfigFile.settings["bL2ZhangRho"] = 0
-            ConfigFile.settings["bL2DefaultRho"] = 1
+            ConfigFile.settings["bL2Z17Rho"] = 0
+            ConfigFile.settings["bL2M99Rho"] = 1
 
     def l1bGetAncCheckBoxUpdate(self,ancillarySource):
         '''
@@ -1456,8 +1455,8 @@ class ConfigWindow(QtWidgets.QDialog):
 
             print("ConfigWindow - l2RhoCorrection set to M99")
             ConfigFile.settings["bL23CRho"] = 0
-            ConfigFile.settings["bL2ZhangRho"] = 0
-            ConfigFile.settings["bL2DefaultRho"] = 1
+            ConfigFile.settings["bL2Z17Rho"] = 0
+            ConfigFile.settings["bL2M99Rho"] = 1
         else:
             self.l1bGetAncResetButton.setDisabled(False)
 
@@ -1534,7 +1533,7 @@ class ConfigWindow(QtWidgets.QDialog):
         self.SVARadioButtonDefault.setChecked(True)
         self.SVARadioButton30.setChecked(False)
         ConfigFile.settings["fL2SVA"] = 40
-        
+
     def l2SVARadioButton30Clicked(self):
         print("ConfigWindow - l2SVA set to 30")
         self.SVARadioButtonDefault.setChecked(False)
@@ -1543,8 +1542,7 @@ class ConfigWindow(QtWidgets.QDialog):
 
     def l2StationsCheckBoxUpdate(self):
         print("ConfigWindow - l2StationsCheckBoxUpdate")
-
-        disabled = (not self.l2StationsCheckBox.isChecked())
+        disabled = not self.l2StationsCheckBox.isChecked()
         if disabled:
             ConfigFile.settings["bL2Stations"] = 0
         else:
@@ -1553,7 +1551,7 @@ class ConfigWindow(QtWidgets.QDialog):
     def l2EnablePercentLtCheckBoxUpdate(self):
         print("ConfigWindow - l2EnablePercentLtCheckBoxUpdate")
 
-        disabled = (not self.l2EnablePercentLtCheckBox.isChecked())
+        disabled = not self.l2EnablePercentLtCheckBox.isChecked()
         self.l2PercentLtLabel.setDisabled(disabled)
         self.l2PercentLtLineEdit.setDisabled(disabled)
         if disabled:
@@ -1567,16 +1565,16 @@ class ConfigWindow(QtWidgets.QDialog):
         self.RhoRadioButtonZhang.setChecked(False)
         self.RhoRadioButtonDefault.setChecked(False)
         ConfigFile.settings["bL23CRho"] = 1
-        ConfigFile.settings["bL2ZhangRho"] = 0
-        ConfigFile.settings["bL2DefaultRho"] = 0
+        ConfigFile.settings["bL2Z17Rho"] = 0
+        ConfigFile.settings["bL2M99Rho"] = 0
     def l2RhoRadioButtonZhangClicked(self):
         print("ConfigWindow - l2RhoCorrection set to Zhang")
         self.RhoRadoButton3C.setChecked(False)
         self.RhoRadioButtonZhang.setChecked(True)
         self.RhoRadioButtonDefault.setChecked(False)
         ConfigFile.settings["bL23CRho"] = 0
-        ConfigFile.settings["bL2ZhangRho"] = 1
-        ConfigFile.settings["bL2DefaultRho"] = 0
+        ConfigFile.settings["bL2Z17Rho"] = 1
+        ConfigFile.settings["bL2M99Rho"] = 0
         if ConfigFile.settings["fL1bqcSZAMax"] > 60:
             print("SZA outside model limits; adjusting to 60")
             ConfigFile.settings["fL1bqcSZAMax"] = 60
@@ -1587,16 +1585,16 @@ class ConfigWindow(QtWidgets.QDialog):
         self.RhoRadioButtonZhang.setChecked(False)
         self.RhoRadioButtonDefault.setChecked(True)
         ConfigFile.settings["bL23CRho"] = 0
-        ConfigFile.settings["bL2ZhangRho"] = 0
-        ConfigFile.settings["bL2DefaultRho"] = 1
+        ConfigFile.settings["bL2Z17Rho"] = 0
+        ConfigFile.settings["bL2M99Rho"] = 1
     def l2RhoRadioButtonYourClicked(self):
         print("ConfigWindow - l2RhoCorrection set to Default. You have not submitted your method.")
         self.RhoRadoButton3C.setChecked(False)
         self.RhoRadioButtonZhang.setChecked(False)
         self.RhoRadioButtonYour.setChecked(True)
         ConfigFile.settings["bL23CRho"] = 0
-        ConfigFile.settings["bL2ZhangRho"] = 0
-        ConfigFile.settings["bL2DefaultRho"] = 1 # This is a mock up. Use Default
+        ConfigFile.settings["bL2Z17Rho"] = 0
+        ConfigFile.settings["bL2M99Rho"] = 1 # This is a mock up. Use Default
 
     def l2SimpleNIRRadioButtonClicked(self):
         print("ConfigWindow - l2NIRCorrection set to Simple")
@@ -1716,14 +1714,15 @@ class ConfigWindow(QtWidgets.QDialog):
         # print(f'ConfigFile.products["bL2PlotProd"] = {ConfigFile.products["bL2PlotProd"]}')
         OCproductsDialog = OCproductsWindow(self)
         OCproductsDialog.show()
+        # Even with modal set to true, the lines below are executed before the window closes.
 
-        if int(ConfigFile.settings["bL2WeightMODISA"]) == 1:
-            self.l2WeightMODISACheckBox.setChecked(True)
-        # print(f'ConfigFile.products["bL2PlotProd"] = {ConfigFile.products["bL2PlotProd"]}')
+        # if int(ConfigFile.settings["bL2WeightMODISA"]) == 1:
+        #     self.l2WeightMODISACheckBox.setChecked(True)
+        # print(f'Returning ConfigFile.products["bL2PlotProd"] = {ConfigFile.products["bL2PlotProd"]}')
 
     def l2SaveSeaBASSCheckBoxUpdate(self):
         print("ConfigWindow - l2SaveSeaBASSCheckBoxUpdate")
-        disabled = (not self.l2SaveSeaBASSCheckBox.isChecked())
+        disabled = not self.l2SaveSeaBASSCheckBox.isChecked()
 
         self.l2SeaBASSHeaderEditButton.setDisabled(disabled)
 
@@ -1791,7 +1790,6 @@ class ConfigWindow(QtWidgets.QDialog):
         ConfigFile.settings["bL1aqcCleanSunAngle"] = int(self.l1aqcCleanSunAngleCheckBox.isChecked())
         ConfigFile.settings["fL1aqcSunAngleMin"] = float(self.l1aqcSunAngleMinLineEdit.text())
         ConfigFile.settings["fL1aqcSunAngleMax"] = float(self.l1aqcSunAngleMaxLineEdit.text())
-
         ConfigFile.settings["bL1aqcDeglitch"] = int(self.l1aqcDeglitchCheckBox.isChecked())
 
         if self.l1bGetAncCheckBox1.isChecked():
@@ -1819,7 +1817,6 @@ class ConfigWindow(QtWidgets.QDialog):
         ConfigFile.settings["fL1bqcSpecFilterEs"] = float(self.l1bqcSpecFilterEsLineEdit.text())
         ConfigFile.settings["fL1bqcSpecFilterLi"] = float(self.l1bqcSpecFilterLiLineEdit.text())
         ConfigFile.settings["fL1bqcSpecFilterLt"] = float(self.l1bqcSpecFilterLtLineEdit.text())
-
         ConfigFile.settings["bL1bqcEnableQualityFlags"] = int(self.l1bqcQualityFlagCheckBox.isChecked())
         ConfigFile.settings["fL1bqcCloudFlag"] = float(self.l1bqcCloudFlagLineEdit.text())
         ConfigFile.settings["fL1bqcSignificantEsFlag"] = float(self.l1bqcEsFlagLineEdit.text())
@@ -1832,8 +1829,8 @@ class ConfigWindow(QtWidgets.QDialog):
         ConfigFile.settings["fL2PercentLt"] = float(self.l2PercentLtLineEdit.text())
         # ConfigFile.settings["fL2RhoSky"] = float(self.l2RhoSkyLineEdit.text())
         ConfigFile.settings["bL23CRho"] = int(self.RhoRadoButton3C.isChecked())
-        ConfigFile.settings["bL2ZhangRho"] = int(self.RhoRadioButtonZhang.isChecked())
-        ConfigFile.settings["bL2DefaultRho"] = int(self.RhoRadioButtonDefault.isChecked())
+        ConfigFile.settings["bL2Z17Rho"] = int(self.RhoRadioButtonZhang.isChecked())
+        ConfigFile.settings["bL2M99Rho"] = int(self.RhoRadioButtonDefault.isChecked())
 
         ConfigFile.settings["bL2PerformNIRCorrection"] = int(self.l2NIRCorrectionCheckBox.isChecked())
         ConfigFile.settings["bL2SimpleNIRCorrection"] = int(self.SimpleNIRRadioButton.isChecked())

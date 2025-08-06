@@ -36,57 +36,13 @@ Notes:
 
 #==========================================================================================================================================
 
+from os import stat
 import re
 from datetime import datetime
 from collections import OrderedDict
 
 #==========================================================================================================================================
 
-def is_number(s):
-
-    """
-    is_number determines if a given string is a number or not, does not handle complex numbers
-    returns True for int, float, or long numbers, else False
-    syntax: is_number(str)
-    """
-
-    try:
-        float(s) # handles int, long, and float, but not complex
-    except ValueError:
-        return False
-    return True
-
-#==========================================================================================================================================
-
-def is_int(s):
-
-    """
-    is_int determines if a given string is an integer or not, uses int()
-    returns True for int numbers, else False
-    syntax: is_int(str)
-    """
-
-    try:
-        int(s) # handles int
-    except ValueError:
-        return False
-    return True
-
-#==========================================================================================================================================
-
-def doy2mndy(yr, doy):
-
-    """
-    doy2mndy returns the month and day of month as integers
-    given year and julian day
-    syntax: [mn, dy] = doy2mndy(yr, doy)
-    """
-
-    from datetime import datetime
-
-    dt = datetime.strptime('{:04d}{:03d}'.format(yr,doy), '%Y%j')
-
-    return int(dt.strftime('%m')),int(dt.strftime('%d'))
 
 #==========================================================================================================================================
 
@@ -105,11 +61,13 @@ class readSB:
         .adl       = fill value as a float used for above detection limit, read from header (empty if missing or N/A)
 
         Returned sub-functions:
-        .fd_datetime()      - Converts date and time information from the file's data matrix to a Python list of datetime objects
-        .writeSBfile(ofile) - Writes headers, comments, and data into a SeaBASS file specified by ofile
+        .fd_datetime()                                  - Converts date and time information from the file's data matrix to a Python
+                                                          list of datetime objects
+        .addDataToOutput(irow,var_name,units,var_value) - Adds or appends single data point to data matrix given row index, field name,
+                                                          field units, and data value, handling fields & units headers and missing values
+        .writeSBfile(ofile)                             - Writes headers, comments, and data into a SeaBASS file specified by ofile
     """
-
-    def __init__(self, filename, mask_missing=True, mask_above_detection_limit=True, mask_below_detection_limit=True, no_warn=False):
+    def __init__(self, filename, mask_missing=True, mask_above_detection_limit=True, mask_below_detection_limit=True, no_warn=False, mask_commented_headers = True):
         """
         Required arguments:
         filename = name of SeaBASS input file (string)
@@ -130,10 +88,57 @@ class readSB:
         self.bdl               = ''
         self.pi                = ''
         self.length            = 0
-        self.optically_shallow = False
-        self.err_suffixes      = ['_cv', '_sd', '_se', '_bincount']
+        self.empty_col         = []
+        self.data_use_warning  = False
+        self.err_suffixes      = ['_cv', '_sd', '_se', '_unc','_bincount']
 
         end_header             = False
+        #utility functions put here instead of outside of class because it was making it very hard to import into other classes/packages
+        def is_number(s):
+
+            """
+            is_number determines if a given string is a number or not, does not handle complex numbers
+            returns True for int, float, or long numbers, else False
+            syntax: is_number(str)
+            """
+
+            try:
+                float(s) # handles int, long, and float, but not complex
+            except ValueError:
+                return False
+            return True
+
+        #==========================================================================================================================================
+        def is_int(s):
+
+            """
+            is_int determines if a given string is an integer or not, uses int()
+            returns True for int numbers, else False
+            syntax: is_int(str)
+            """
+
+            try:
+                int(s) # handles int
+            except ValueError:
+                return False
+            return True
+
+        #==========================================================================================================================================
+        def doy2mndy(yr, doy):
+
+            """
+            doy2mndy returns the month and day of month as integers
+            given year and julian day
+            syntax: [mn, dy] = doy2mndy(yr, doy)
+            """
+
+            from datetime import datetime
+
+            dt = datetime.strptime('{:04d}{:03d}'.format(yr,doy), '%Y%j')
+
+            return int(dt.strftime('%m')),int(dt.strftime('%d'))
+
+
 
         try:
             fileobj = open(self.filename,'r')
@@ -157,9 +162,9 @@ class readSB:
 
             """ Extract header """
             if not end_header \
-                and '/begin_header' not in line.lower() \
-                and '/end_header' not in line.lower() \
-                and '!' not in line:
+                and not '/begin_header' in line.lower() \
+                and not '/end_header' in line.lower() \
+                and not '!' in line:
                 try:
                     [h,v] = line.split('=', 1)
                     h = h.lower()
@@ -172,7 +177,7 @@ class readSB:
                     return
 
             """ Extract fields """
-            if '/fields=' in line.lower() and '!' not in line:
+            if '/fields=' in line.lower() and not '!' in line:
                 try:
                     _vars = line.split('=', 1)[1].lower().split(',')
                     for var in _vars:
@@ -183,11 +188,11 @@ class readSB:
                     return
 
             """ Extract units """
-            if '/units=' in line.lower() and '!' not in line:
+            if '/units=' in line.lower() and not '!' in line:
                 _units = line.split('=', 1)[1].lower().split(',')
 
             """ Extract missing val """
-            if '/missing=' in line.lower() and '!' not in line:
+            if '/missing=' in line.lower() and not '!' in line:
                 try:
                     self.missing = float(line.split('=', 1)[1])
 
@@ -196,13 +201,11 @@ class readSB:
                     return
 
             """ Extract optical depth warning """
-            if '/optical_depth_warning=' in line.lower() and '!' not in line:
-                _opt_shallow = line.split('=', 1)[1]
-                if 'true' in _opt_shallow:
-                    self.optically_shallow = True
+            if '/data_use_warning=' in line.lower() and not '!' in line:
+                self.data_use_warning = True
 
             """ Extract below detection limit """
-            if '/below_detection_limit=' in line.lower() and '!' not in line:
+            if '/below_detection_limit=' in line.lower() and not '!' in line:
                 try:
                     self.bdl = float(line.split('=', 1)[1])
 
@@ -211,7 +214,7 @@ class readSB:
                     return
 
             """ Extract below detection limit """
-            if '/above_detection_limit=' in line.lower() and '!' not in line:
+            if '/above_detection_limit=' in line.lower() and not '!' in line:
                 try:
                     self.adl = float(line.split('=', 1)[1])
 
@@ -220,11 +223,11 @@ class readSB:
                     return
 
             """ Extract PI """
-            if '/investigators=' in line.lower() and '!' not in line:
+            if '/investigators=' in line.lower() and not '!' in line:
                 self.pi = line.split('=', 1)[1].split(',', 1)[0]
 
             """ Extract delimiter """
-            if '/delimiter=' in line.lower() and '!' not in line:
+            if '/delimiter=' in line.lower() and not '!' in line:
                 if 'comma' in line.lower():
                     delim = ',+'
                 elif 'space' in line.lower():
@@ -236,8 +239,13 @@ class readSB:
                     return
 
             """ Extract comments, but not history of metadata changes """
-            if '!' in line and '!/' not in line:
-                self.comments.append(line[1:])
+            #unless specified
+            if mask_commented_headers:
+                if '!' in line and not '!/' in line:
+                    self.comments.append(line[1:])
+            elif not mask_commented_headers:
+                if '!' in line:
+                    self.comments.append(line[1:])
 
             """ Check for required SeaBASS file header elements before parsing data matrix """
             if '/end_header' in line.lower():
@@ -253,8 +261,8 @@ class readSB:
                     raise Exception('No /fields detected in file: {:}'.format(self.filename))
                     return
 
-                if self.optically_shallow == 1 and not no_warn:
-                    print('Warning: optical_depth_warning flag is set to true in file: {:}. This file contains measurements in optically shallow conditions (i.e. where there may be bottom reflectance, etc). Use with caution, exclude if performing validation or algorithm development. Use no_warn=True to suppress this message.'.format(self.filename))
+                if self.data_use_warning and not no_warn:
+                    print('Warning: data_use_warning header is present in file: {:}. This file contains measurements collected under unique conditions. Use with caution and consult headers, file comments, and documentation for additional information. Use no_warn=True to suppress this message.'.format(self.filename))
 
                 if mask_above_detection_limit and not no_warn:
                     if not self.adl:
@@ -308,7 +316,11 @@ class readSB:
         return
 
 #==========================================================================================================================================
-
+    #fractional seconds can have anywhere from 1 to 6 digits, but datetime will prepend 0s to number until it is 6 digits for some reason
+    def millisecondToMicrosecond(self, millisecond):
+        while(len(millisecond)< 6):
+            millisecond += '0'
+        return millisecond
     def fd_datetime(self):
         """ Convert date and time information from the file's data to a Python list of datetime objects.
 
@@ -338,6 +350,9 @@ class readSB:
         """
         dt = []
 
+        dateRegex = "(\d{4})(\d{2})(\d{2})"
+        timeRegex = "(\d{1,2})\:(\d{2})\:(\d{2})(\.\d{1,6})?"
+
         if self.length == 0:
             raise ValueError('readSB.data structure is missing for file: {:}'.format(self.filename))
             return
@@ -346,15 +361,21 @@ class readSB:
            'time'     in self.data:
 
             for d,t in zip([str(de) for de in self.data['date']],self.data['time']):
-                da = re.search("(\d{4})(\d{2})(\d{2})", d)
-                ti = re.search("(\d{1,2})\:(\d{2})\:(\d{2})", t)
+                da = re.search(dateRegex, d)
+                ti = re.search(timeRegex, t)
                 try:
+                    if (ti.group(4) is not None):
+                        millisecond = ti.group(4).replace(".","")
+                    else:
+                        millisecond = '0'
+                    millisecond = self.millisecondToMicrosecond(millisecond)
                     dt.append(datetime(int(da.group(1)), \
-                                       int(da.group(2)), \
-                                       int(da.group(3)), \
-                                       int(ti.group(1)), \
-                                       int(ti.group(2)), \
-                                       int(ti.group(3))))
+                                        int(da.group(2)), \
+                                        int(da.group(3)), \
+                                        int(ti.group(1)), \
+                                        int(ti.group(2)), \
+                                        int(ti.group(3)), \
+                                        int(millisecond)))
                 except:
                     raise ValueError('date/time fields not formatted correctly; unable to parse in file: {:}'.format(self.filename))
                     return
@@ -365,15 +386,17 @@ class readSB:
              'hour'   in self.data and \
              'minute' in self.data and \
              'second' in self.data:
-
-            for y,m,d,h,mn,s in zip(self.data['year'], self.data['month'], self.data['day'], self.data['hour'], self.data['minute'], self.data['second']):
+            second = [str(x).split('.')[0] for x in self.data['second']]
+            millisecond = [self.millisecondToMicrosecond(str(x).split('.')[1]) if '.' in str(x) else 0 for x in self.data['second']]
+            for y,m,d,h,mn,s,ms in zip(self.data['year'], self.data['month'], self.data['day'], self.data['hour'], self.data['minute'], second, millisecond):
                 try:
                     dt.append(datetime(int(y), \
                                        int(m), \
                                        int(d), \
                                        int(h), \
                                        int(mn), \
-                                       int(s)))
+                                       int(s), \
+                                       int(ms)))
                 except:
                     raise ValueError('year/month/day/hour/minute/second fields not formatted correctly; unable to parse in file: {:}'.format(self.filename))
                     return
@@ -384,14 +407,20 @@ class readSB:
              'time'   in self.data:
 
             for y,m,d,t in zip(self.data['year'], self.data['month'], self.data['day'], self.data['time']):
-                ti = re.search("(\d{1,2})\:(\d{2})\:(\d{2})", t)
+                ti = re.search(timeRegex, t)
                 try:
+                    if (ti.group(4) is not None):
+                        millisecond = ti.group(4).replace(".","")
+                    else:
+                        millisecond = '0'
+                    millisecond = self.millisecondToMicrosecond(millisecond)
                     dt.append(datetime(int(y), \
                                        int(m), \
                                        int(d), \
                                        int(ti.group(1)), \
                                        int(ti.group(2)), \
-                                       int(ti.group(3))))
+                                       int(ti.group(3)), \
+                                        int(millisecond)))
                 except:
                     raise ValueError('year/month/day/time fields not formatted correctly; unable to parse in file: {:}'.format(self.filename))
                     return
@@ -400,16 +429,18 @@ class readSB:
              'hour'   in self.data and \
              'minute' in self.data and \
              'second' in self.data:
-
-            for d,h,mn,s in zip([str(de) for de in self.data['date']], self.data['hour'], self.data['minute'], self.data['second']):
-                da = re.search("(\d{4})(\d{2})(\d{2})", d)
+            second = [str(x).split('.')[0] for x in self.data['second']]
+            millisecond = [self.millisecondToMicrosecond(str(x).split('.')[1]) if '.' in str(x) else 0 for x in self.data['second']]
+            for d,h,mn,s,ms in zip([str(de) for de in self.data['date']], self.data['hour'], self.data['minute'], second, millisecond):
+                da = re.search(dateRegex, d)
                 try:
                     dt.append(datetime(int(da.group(1)), \
                                        int(da.group(2)), \
                                        int(da.group(3)), \
                                        int(h), \
                                        int(mn), \
-                                       int(s)))
+                                       int(s),\
+                                        int(ms)))
                 except:
                     raise ValueError('date/hour/minute/second fields not formatted correctly; unable to parse in file: {:}'.format(self.filename))
                     return
@@ -417,14 +448,20 @@ class readSB:
         elif 'date_time' in self.data:
 
             for i in self.data('date_time'):
-                da = re.search("(\d{4})-(\d{2})-(\d{2})\s(\d{1,2})\:(\d{2})\:(\d{2})", i)
+                da = re.search("{(\d{4})-(\d{2})-(\d{2})}\s(\d{1,2})\:(\d{2})\:(\d{2})(\.\d{1,6})?", i)
                 try:
+                    if (da.group(7) is not None):
+                        millisecond = da.group(7).replace(".","")
+                    else:
+                        millisecond = '0'
+                    millisecond = self.millisecondToMicrosecond(millisecond)
                     dt.append(datetime(int(da.group(1)), \
                                        int(da.group(2)), \
                                        int(da.group(3)), \
                                        int(da.group(4)), \
                                        int(da.group(5)), \
-                                       int(da.group(6))))
+                                       int(da.group(6)),\
+                                        int(millisecond)))
                 except:
                     raise ValueError('date_time field not formatted correctly; unable to parse in file: {:}'.format(self.filename))
                     return
@@ -435,7 +472,9 @@ class readSB:
              'minute' in self.data and \
              'second' in self.data:
 
-            for y,sdy,h,mn,s in zip(self.data['year'], self.data['sdy'], self.data['hour'], self.data['minute'], self.data['second']):
+            second = [str(x).split('.')[0] for x in self.data['second']]
+            millisecond = [self.millisecondToMicrosecond(str(x).split('.')[1]) if '.' in str(x) else 0 for x in self.data['second']]
+            for y,sdy,h,mn,s, ms in zip(self.data['year'], self.data['sdy'], self.data['hour'], self.data['minute'], second, millisecond):
                 [m,d] = doy2mndy(y,sdy)
                 try:
                     dt.append(datetime(int(y), \
@@ -443,7 +482,8 @@ class readSB:
                                        int(d), \
                                        int(h), \
                                        int(mn), \
-                                       int(s)))
+                                       int(s),
+                                       int(millisecond)))
                 except:
                     raise ValueError('year/sdy/hour/minute/second fields not formatted correctly; unable to parse in file: {:}'.format(self.filename))
                     return
@@ -454,16 +494,65 @@ class readSB:
 
             for y,sdy,t in zip(self.data['year'], self.data['sdy'], self.data['time']):
                 [m,d] = doy2mndy(y,sdy)
-                ti = re.search("(\d{1,2})\:(\d{2})\:(\d{2})", t)
+                ti = re.search(timeRegex, t)
                 try:
+                    if (ti.group(4) is not None):
+                        millisecond = ti.group(4).replace(".","")
+                    else:
+                        millisecond = '0'
+                    millisecond = self.millisecondToMicrosecond(millisecond)
                     dt.append(datetime(int(y), \
                                        int(m), \
                                        int(d), \
                                        int(ti.group(1)), \
                                        int(ti.group(2)), \
-                                       int(ti.group(3))))
+                                       int(ti.group(3)),\
+                                        int(millisecond)))
                 except:
                     raise ValueError('year/sdy/time fields not formatted correctly; unable to parse in file: {:}'.format(self.filename))
+                    return
+
+        elif 'start_date' in self.headers and \
+             'time'   in self.data:
+
+            da = re.search(timeRegex, self.headers['start_date'])
+            for t in self.data['time']:
+                ti = re.search(dateRegex, t)
+                try:
+                    if (ti.group(4) is not None):
+                        millisecond = ti.group(4).replace(".","")
+                    else:
+                        millisecond = '0'
+                    millisecond = self.millisecondToMicrosecond(millisecond)
+                    dt.append(datetime(int(da.group(1)), \
+                                       int(da.group(2)), \
+                                       int(da.group(3)), \
+                                       int(ti.group(1)), \
+                                       int(ti.group(2)), \
+                                       int(ti.group(3)),\
+                                        int(millisecond)))
+                except:
+                    raise ValueError('start_date header and time field not formatted correctly; unable to parse in file: {:}'.format(self.filename))
+                    return
+
+        elif 'start_date' in self.headers and \
+             'hour'   in self.data and \
+             'minute' in self.data and \
+             'second' in self.data:
+            second = [str(x).split('.')[0] for x in self.data['second']]
+            millisecond = [self.millisecondToMicrosecond(str(x).split('.')[1]) if '.' in str(x) else 0 for x in self.data['second']]
+            da = re.search(dateRegex, self.headers['start_date'])
+            for h,mn,s,ms in zip(self.data['hour'], self.data['minute'],second,millisecond):
+                try:
+                    dt.append(datetime(int(da.group(1)), \
+                                       int(da.group(2)), \
+                                       int(da.group(3)), \
+                                       int(h), \
+                                       int(mn), \
+                                       int(s), \
+                                       int(ms)))
+                except:
+                    raise ValueError('start_date header and hour/minute/second field not formatted correctly; unable to parse in file: {:}'.format(self.filename))
                     return
 
         elif 'year'   in self.data and \
@@ -588,7 +677,7 @@ class readSB:
         elif 'date'   in self.data:
 
             for d in zip([str(de) for de in self.data['date']]):
-                da = re.search("(\d{4})(\d{2})(\d{2})", d)
+                da = re.search(dateRegex, d)
                 try:
                     dt.append(datetime(int(da.group(1)), \
                                        int(da.group(2)), \
@@ -619,22 +708,28 @@ class readSB:
         elif 'start_date' in self.headers and 'start_time' in self.headers:
 
             da = re.search("(\d{4})(\d{2})(\d{2})", self.headers['start_date'])
-            ti = re.search("(\d{1,2})\:(\d{2})\:(\d{2})\[(gmt|GMT)\]", self.headers['start_time'])
+            ti = re.search("(\d{1,2})\:(\d{2})\:(\d{2})(\.\d{1,6})?\[(gmt|GMT)\]", self.headers['start_time'])
             for i in range(self.length):
                 try:
+                    if (ti.group(4) is not None):
+                        millisecond = ti.group(4).replace(".","")
+                    else:
+                        millisecond = '0'
+                    millisecond = self.millisecondToMicrosecond(millisecond)
                     dt.append(datetime(int(da.group(1)), \
                                        int(da.group(2)), \
                                        int(da.group(3)), \
                                        int(ti.group(1)), \
                                        int(ti.group(2)), \
-                                       int(ti.group(3))))
+                                       int(ti.group(3)),\
+                                        int(millisecond)))
                 except:
                     raise ValueError('/start_date and /start_time headers not formatted correctly; unable to parse in file: {:}'.format(self.filename))
                     return
 
         elif 'start_date' in self.headers:
 
-            da = re.search("(\d{4})(\d{2})(\d{2})", self.headers['start_date'])
+            da = re.search(dateRegex, self.headers['start_date'])
             for i in range(self.length):
                 try:
                     dt.append(datetime(int(da.group(1)), \
@@ -651,6 +746,57 @@ class readSB:
             print('Warning: fd_datetime failed -- file must contain a valid date and time information')
 
         return(dt)
+
+#==========================================================================================================================================
+
+    def addDataToOutput(self ,irow,var_name,units,var_value, overwrite):
+
+        from copy import deepcopy
+
+        #create empty column template for new var instantiation
+        if not self.empty_col:
+            for i in range(self.length):
+                self.empty_col.append(str(self.missing))
+
+        #handle the case where irow is used to extend the data matrix/concatenate files together
+        if irow >= self.length:
+            drow = irow - self.length
+            for i in range(drow + 1):
+                self.length = self.length + 1
+                self.empty_col.append(str(self.missing))
+                for var in self.data:
+                    self.data[var].append(str(self.missing))
+
+        #check for valid inputs
+        if not var_value:
+            var_value = str(self.missing)
+        if not units:
+            units = 'none'
+
+        #define fields, units, and data column, if needed
+        if var_name not in self.data:
+            self.headers['fields'] = self.headers['fields'] + ',' + var_name
+            try:
+                self.headers['units'] = self.headers['units'] + ',' + units.lower()
+            except:
+                print('Warning: no units found in SeaBASS file header')
+            self.data[var_name] = deepcopy(self.empty_col)
+
+        #save data to column and row
+        if is_number(self.data[var_name][irow]):
+            if overwrite:
+                self.data[var_name][irow] = var_value
+            else:
+                if float(self.data[var_name][irow]) == self.missing:
+                    self.data[var_name][irow] = var_value
+        else:
+            if overwrite:
+                self.data[var_name][irow] = var_value
+            else:
+                if str(self.missing) in self.data[var_name][irow]:
+                    self.data[var_name][irow] = var_value
+
+        return
 
 #==========================================================================================================================================
 
